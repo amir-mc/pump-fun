@@ -1,0 +1,24 @@
+{
+  "name": "pumpfun-listener-ts",
+  "version": "1.0.0",
+  "description": "WebSocket listener for Pump.fun token creations.",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.0",
+    "ws": "^8.14.0",
+    "bs58": "^5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0"
+  },
+  "license": "MIT"
+}
