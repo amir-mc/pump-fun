@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 import { PumpPortalListener } from './listeners/PumpPortalListener';
 import { TokenInfo } from './types';
-import { TokenHandlerTester } from './listeners/TokenHandlerTester';
+import { BondingCurveStateTester, checkTokenStatus } from './curve/get_bonding_curve_status';
 
 // Load environment variables
 dotenv.config();
@@ -14,13 +14,13 @@ async function main() {
     // Simple callback to handle new tokens
     const handleNewToken = async (tokenInfo: TokenInfo): Promise<void> => {
         // اینجا میتونید منطق پردازش توکن رو اضافه کنید
-        // مثل ذخیره در دیتابیس، تحلیل قیمت و غیره
-
-             console.log(`🆕 New token detected: ${tokenInfo.name}`);
+        console.log(`🆕 CURVE: ${tokenInfo.name}`);
         
-        // یا از کلاس تست کننده استفاده کنید
-        const tester = new TokenHandlerTester();
-        await tester.handleNewToken(tokenInfo);
+        try {
+            await checkTokenStatus(tokenInfo.bondingCurve); // ارسال پارامتر bondingCurve
+        } catch (error:any) {
+            console.error(`Error processing token: ${error.message}`);
+        }
     };
     
     try {
@@ -30,6 +30,8 @@ async function main() {
         console.error("❌ Error starting listener:", error);
         process.exit(1);
     }
+
+   
 }
 
 // Handle graceful shutdown
