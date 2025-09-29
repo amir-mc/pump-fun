@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model Token {
+  mintAddress   String   @id @unique
+  name          String
+  symbol        String
+  bondingCurve  String
+  creator       String
+  signature     String
+  timestamp     DateTime
+  executable    BigInt
+  rentEpoch     BigInt
+  space         BigInt
+  Tokenprice    BigInt
+  totalSupply   BigInt
+  complete      Boolean
+  createdAt     DateTime @default(now())
+}
+model BondingCurveTest {
+  id        Int      @id @default(autoincrement())
+  curveAddr String
+  Tokenprice    Float
+  virtual_token_reserves BigInt
+  virtual_sol_reserves   BigInt
+  real_token_reserves    BigInt
+  real_sol_reserves      BigInt
+  token_total_supply     BigInt
+  complete   Boolean
+  creator    String?
+  createdAt  DateTime @default(now())
+}
+// model Token {
+//   mintAddress       String  @id @unique
+//   name              String
+//   symbol            String
+//   bondingCurve      String
+//   creator           String
+//   signature         String
+//   timestamp         DateTime
+//   virtualTokenRes   BigInt
+//   virtualSolRes     BigInt
+//   realTokenRes      BigInt
+//   realSolRes        BigInt
+//   totalSupply       BigInt
+//   complete          Boolean
+//   createdAt         DateTime @default(now())
+// }

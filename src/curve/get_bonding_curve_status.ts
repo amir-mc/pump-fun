@@ -6,22 +6,32 @@
  * https://github.com/pump-fun/pump-public-docs/blob/main/docs/PUMP_CREATOR_FEE_README.md
  */
 
-import { Connection, PublicKey } from "@solana/web3.js";
+import { clusterApiUrl, Connection, PublicKey } from "@solana/web3.js";
 import * as dotenv from "dotenv";
+import { TokenInfo } from "../types";
+import { PrismaClient } from "../generated/prisma";
+import { saveBondingCurveTest } from "../services/dbService";
+
+
+
+const LAMPORTS_PER_SOL = 1_000_000_000n;
+const TOKEN_DECIMALS = 6n;
+const CURVE_ADDRESS = "5XG833a6VFBo9fz9fpAXdgUUCeR9E3nPTGpBxdXL3prs";
 
 dotenv.config();
 
 const RPC_ENDPOINT = process.env.SOLANA_NODE_RPC_ENDPOINT || "https://api.mainnet-beta.solana.com";
 
+const prisma = new PrismaClient();
 // Token mint you want to check
 const TOKEN_MINT = "...";
 
 // Constants
-const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
+const PUMP_PROGRAM_ID = new PublicKey(`${process.env.PUMP_PROGRAM_PUBLIC_KRY}`);
 const EXPECTED_DISCRIMINATOR = Buffer.alloc(8);
 EXPECTED_DISCRIMINATOR.writeBigUInt64LE(6966180631402821399n, 0);
 
-interface BondingCurveStateProps {
+export interface BondingCurveStateProps {
   virtual_token_reserves: bigint;
   virtual_sol_reserves: bigint;
   real_token_reserves: bigint;
@@ -66,6 +76,7 @@ class BondingCurveState {
   }
 }
 
+
 /**
  * Derive bonding curve PDA for a mint
  */
@@ -107,7 +118,47 @@ async function getBondingCurveState(
 /**
  * Main function: check token bonding curve status
  */
-export async function checkTokenStatus(mintAddress: string) {
+
+function calculateBondingCurvePrice(curveState: BondingCurveState): number {
+  if (
+    curveState.virtual_token_reserves <= 0n ||
+    curveState.virtual_sol_reserves <= 0n
+  ) {
+    throw new Error("Invalid reserve state");
+  }
+
+  const sol = Number(curveState.virtual_sol_reserves) / Number(LAMPORTS_PER_SOL);
+  const tokens =
+    Number(curveState.virtual_token_reserves) / 10 ** Number(TOKEN_DECIMALS);
+
+  return sol / tokens;
+}
+
+async function main() {
+  try {
+    const endpoint =
+      process.env.SOLANA_NODE_RPC_ENDPOINT || clusterApiUrl("mainnet-beta");
+    const connection = new Connection(endpoint, "confirmed");
+
+    const curveAddress = new PublicKey(CURVE_ADDRESS);
+    const bondingCurveState = await getBondingCurveState(
+      connection,
+      curveAddress
+    );
+
+    const tokenPriceSol = calculateBondingCurvePrice(bondingCurveState);
+
+    console.log("Token price:");
+    console.log(`  ${tokenPriceSol.toFixed(10)} SOL`);
+      // ✅ ذخیره موقت در DB
+    await saveBondingCurveTest(curveAddress.toBase58(), bondingCurveState);
+  } catch (e) {
+    console.error("Error:", e);
+  }
+}
+
+
+export async function checkTokenStatus(mintAddress: string):Promise<any> {
   try {
     const mint = new PublicKey(mintAddress);
 
@@ -151,6 +202,7 @@ export async function checkTokenStatus(mintAddress: string) {
     console.error(`\nError: ${e.message}`);
   }
 }
+
  export class BondingCurveStateTester {
   private conn: Connection;
   private curveAddress: PublicKey;
@@ -163,7 +215,7 @@ export async function checkTokenStatus(mintAddress: string) {
   }
 
   // تابع برای گرفتن داده‌های BondingCurveState
-  async getBondingCurveStateWithDelay(): Promise<BondingCurveStateProps> {
+   async getBondingCurveStateWithDelay(): Promise<BondingCurveStateProps> {
     let attempt = 0;
     while (attempt < this.retries) {
       try {
@@ -171,25 +223,28 @@ export async function checkTokenStatus(mintAddress: string) {
         const accInfo = await this.conn.getAccountInfo(this.curveAddress);
 
         if (!accInfo || !accInfo.data || accInfo.data.length === 0) {
-          throw new Error('No data returned for bonding curve state');
+          throw new Error("No data returned for bonding curve state");
         }
 
-        // فرض بر این که داده‌ها به صورت صحیح parse شده‌اند
         const bondingCurveState = this.parseBondingCurveState(accInfo.data);
-        console.log('Bonding curve state fetched successfully:', bondingCurveState);
-        return bondingCurveState;
+        console.log("Bonding curve state fetched successfully:", bondingCurveState);
 
-      } catch (error:any) {
+        // ✅ ذخیره موقت در DB
+        await saveBondingCurveTest(this.curveAddress.toBase58(), bondingCurveState);
+
+        return bondingCurveState;
+      } catch (error: any) {
         console.error(`Attempt ${attempt + 1}: Error - ${error.message}`);
         if (attempt < this.retries - 1) {
-          console.log('Retrying after 8 minutes...');
-          await new Promise(resolve => setTimeout(resolve, 480000));  // 8 دقیقه تاخیر
+          console.log("Retrying after 8 minutes...");
+          await new Promise((resolve) => setTimeout(resolve, 480000));
         }
         attempt++;
       }
     }
-    throw new Error('Failed to fetch bonding curve state after retries');
+    throw new Error("Failed to fetch bonding curve state after retries");
   }
+
 
   // تابع برای تجزیه داده‌ها و بازگرداندن آنها به صورت BondingCurveStateProps
   private parseBondingCurveState(data: Buffer): BondingCurveStateProps {
@@ -219,7 +274,7 @@ export async function checkTokenStatus(mintAddress: string) {
   try {
     const tester = new BondingCurveStateTester(
       'https://mainnet.helius-rpc.com/?api-key=1ac664ab-8e57-4bcf-a9e6-f96d8845a972', // RPC Endpoint
-      'BXNjQXJndsXKwLteBspbzSKiQpCMTsgPatjQzqyEiVst' // Bonding Curve Address
+      '5XG833a6VFBo9fz9fpAXdgUUCeR9E3nPTGpBxdXL3prs' // Bonding Curve Address
     );
 
     const bondingCurveState = await tester.getBondingCurveStateWithDelay();
@@ -229,8 +284,10 @@ export async function checkTokenStatus(mintAddress: string) {
     console.error('Test failed:', error.message);
   }
 })();
+
 // Run directly from CLI
 if (require.main === module) {
   const mint = process.argv[2] || TOKEN_MINT;
   checkTokenStatus(mint).catch(console.error);
 }
+main();

@@ -17,6 +17,10 @@ export interface TokenInfo {
     vTokensInBondingCurve: number;
     initialBuy: number;
     traderPublicKey: string;
+
+     executable?: number;
+  rentEpoch?: number;
+  space?: number;
 }
 
 export interface ParsedCreateData {
