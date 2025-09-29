@@ -16,7 +16,7 @@ import { saveBondingCurveTest } from "../services/dbService";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 const TOKEN_DECIMALS = 6n;
-const CURVE_ADDRESS = "5XG833a6VFBo9fz9fpAXdgUUCeR9E3nPTGpBxdXL3prs";
+const CURVE_ADDRESS = "GsdsAVpqBfF5GWAmCtJ9ZeBfZMCTsrCN9A8uQ3cRG9yA";
 
 dotenv.config();
 
@@ -119,7 +119,7 @@ async function getBondingCurveState(
  * Main function: check token bonding curve status
  */
 
-function calculateBondingCurvePrice(curveState: BondingCurveState): number {
+ export function calculateBondingCurvePrice(curveState: BondingCurveState): number {
   if (
     curveState.virtual_token_reserves <= 0n ||
     curveState.virtual_sol_reserves <= 0n
@@ -148,9 +148,10 @@ async function main() {
 
     const tokenPriceSol = calculateBondingCurvePrice(bondingCurveState);
 
+    //console.log("llllllllllllllllllllllllllllll:",tokenPriceSol);
     console.log("Token price:");
     console.log(`  ${tokenPriceSol.toFixed(10)} SOL`);
-      // ✅ ذخیره موقت در DB
+      // ✅ ذخیره موقت در DB  
     await saveBondingCurveTest(curveAddress.toBase58(), bondingCurveState);
   } catch (e) {
     console.error("Error:", e);
@@ -207,6 +208,7 @@ export async function checkTokenStatus(mintAddress: string):Promise<any> {
   private conn: Connection;
   private curveAddress: PublicKey;
   private retries: number;
+
 
   constructor(rpcEndpoint: string, curveAddress: string, retries: number = 3) {
     this.conn = new Connection(rpcEndpoint, 'confirmed');
@@ -274,7 +276,7 @@ export async function checkTokenStatus(mintAddress: string):Promise<any> {
   try {
     const tester = new BondingCurveStateTester(
       'https://mainnet.helius-rpc.com/?api-key=1ac664ab-8e57-4bcf-a9e6-f96d8845a972', // RPC Endpoint
-      '5XG833a6VFBo9fz9fpAXdgUUCeR9E3nPTGpBxdXL3prs' // Bonding Curve Address
+      'GsdsAVpqBfF5GWAmCtJ9ZeBfZMCTsrCN9A8uQ3cRG9yA' // Bonding Curve Address
     );
 
     const bondingCurveState = await tester.getBondingCurveStateWithDelay();

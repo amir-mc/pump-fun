@@ -32,7 +32,7 @@ model Token {
 model BondingCurveTest {
   id        Int      @id @default(autoincrement())
   curveAddr String
-  Tokenprice    Float
+  Tokenprice String
   virtual_token_reserves BigInt
   virtual_sol_reserves   BigInt
   real_token_reserves    BigInt
