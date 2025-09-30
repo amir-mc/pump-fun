@@ -21,27 +21,25 @@ model Token {
   creator       String
   signature     String
   timestamp     DateTime
-  executable    BigInt
-  rentEpoch     BigInt
-  space         BigInt
-  Tokenprice    BigInt
+  Tokenprice    String
   totalSupply   BigInt
   complete      Boolean
   createdAt     DateTime @default(now())
 }
-model BondingCurveTest {
-  id        Int      @id @default(autoincrement())
-  curveAddr String
-  Tokenprice String
-  virtual_token_reserves BigInt
-  virtual_sol_reserves   BigInt
-  real_token_reserves    BigInt
-  real_sol_reserves      BigInt
-  token_total_supply     BigInt
-  complete   Boolean
-  creator    String?
-  createdAt  DateTime @default(now())
-}
+
+// model BondingCurveTest {
+//   id        Int      @id @default(autoincrement())
+//   curveAddr String
+//   Tokenprice String
+//   virtual_token_reserves BigInt
+//   virtual_sol_reserves   BigInt
+//   real_token_reserves    BigInt
+//   real_sol_reserves      BigInt
+//   token_total_supply     BigInt
+//   complete   Boolean
+//   creator    String?
+//   createdAt  DateTime @default(now())
+// }
 // model Token {
 //   mintAddress       String  @id @unique
 //   name              String

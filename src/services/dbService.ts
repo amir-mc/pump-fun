@@ -1,37 +1,57 @@
-//dbService.ts
-import { BondingCurveStateProps, calculateBondingCurvePrice } from "../curve/get_bonding_curve_status";
-import { PrismaClient,Prisma } from "../generated/prisma";
+// src/services/dbService.ts
+import { BondingCurveStateProps } from "../curve/get_bonding_curve_status";
+import { PrismaClient } from "../generated/prisma";
+import { TokenInfo } from "../types";
 
 const prisma = new PrismaClient();
-const LAMPORTS_PER_SOL = 1_000_000_000n;
-const TOKEN_DECIMALS = 6n;
-export async function saveBondingCurveTest(
-  curveAddr: string,
+
+// ذخیره اولیه (مرحله اول)
+export async function saveTokenToDB(
+  tokenInfo: TokenInfo,
+  signature: string
+) {
+  try {
+    await prisma.token.create({
+      data: {
+        mintAddress: tokenInfo.mint,
+        name: tokenInfo.name,
+        symbol: tokenInfo.symbol,
+        bondingCurve: tokenInfo.bondingCurve,
+        creator: tokenInfo.creator,
+        signature,
+        timestamp: new Date(tokenInfo.timestamp),
+        Tokenprice: "0",       // مقدار موقت
+        totalSupply: BigInt(0), // مقدار موقت
+        complete: false,
+      },
+    });
+    console.log(`✅ Token ${tokenInfo.name} ذخیره شد`);
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      console.warn(`⚠️ Token ${tokenInfo.mint} از قبل در DB وجود دارد`);
+    } else {
+      console.error("❌ Error saving token:", err.message);
+    }
+  }
+}
+
+// آپدیت بعد از 80 ثانیه (مرحله دوم)
+export async function updateTokenInDB(
+  mintAddress: string,
   bondingCurveState: BondingCurveStateProps
 ) {
   try {
-      let tokenPriceSol = calculateBondingCurvePrice(bondingCurveState);
-    
-    // Convert to string with proper decimal places
-    const priceString = tokenPriceSol.toFixed(10);
-    console.log('ZZZZZZZZZZZZZZZ:',priceString)
-    const saved = await prisma.bondingCurveTest.create({
-      
+    await prisma.token.update({
+      where: { mintAddress },
       data: {
-        
-        curveAddr,
-        Tokenprice: priceString ,
-        virtual_token_reserves: bondingCurveState.virtual_token_reserves,
-        virtual_sol_reserves: bondingCurveState.virtual_sol_reserves,
-        real_token_reserves: bondingCurveState.real_token_reserves,
-        real_sol_reserves: bondingCurveState.real_sol_reserves,
-        token_total_supply: bondingCurveState.token_total_supply,
+        Tokenprice: bondingCurveState.virtual_sol_reserves.toString(),
+        totalSupply: bondingCurveState.token_total_supply,
         complete: bondingCurveState.complete,
-        creator: bondingCurveState.creator?.toBase58() || null,
+        creator: bondingCurveState.creator?.toBase58(),
       },
     });
-    console.log("✅ BondingCurveTest saved:", saved.id);
-  } catch (error: any) {
-    console.error("❌ Error saving bonding curve test:", error.message);
+    console.log(`🔄 Token ${mintAddress} آپدیت شد`);
+  } catch (err: any) {
+    console.error("❌ Error updating token:", err.message);
   }
 }

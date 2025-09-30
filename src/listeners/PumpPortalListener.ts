@@ -1,6 +1,8 @@
 //PumpPortalListener.ts
 import { Buffer } from 'buffer';
 import { TokenInfo, ParsedCreateData } from '../types';
+import { saveTokenToDB } from "../services/dbService";
+
 
 const bs58 = require('bs58');
 const WebSocket = require('ws');
