@@ -130,6 +130,7 @@ export function calculateBondingCurvePrice(curveState: BondingCurveState): numbe
 
 // تابع main با پارامتر bondingCurveAddress
 async function main(bondingCurveAddress: string) {
+  
   try {
     const endpoint =
       process.env.SOLANA_NODE_RPC_ENDPOINT || clusterApiUrl("mainnet-beta");
@@ -158,63 +159,35 @@ async function main(bondingCurveAddress: string) {
 // تابع checkTokenStatus با تاخیر 70 ثانیه‌ای
 export async function checkTokenStatus(tokenInfo: TokenInfo): Promise<any> {
   try {
-    const mintAddress = tokenInfo.mint;
-    
-    // اضافه کردن تاخیر 70 ثانیه‌ای
-    console.log(`⏳ Waiting 70 seconds before processing token: ${mintAddress}...`);
-    await new Promise(resolve => setTimeout(resolve, 70000));
-    console.log(`✅ 70 seconds delay completed! Processing token status...`);
+    console.log(`⏳ Waiting 60 seconds before processing token: ${tokenInfo.mint}...`);
+    await new Promise((r) => setTimeout(r, 60000));
 
-    const mint = new PublicKey(mintAddress);
-
-    const [bondingCurveAddress, bump] = await getAssociatedBondingCurveAddress(
-      mint,
-      PUMP_PROGRAM_ID
-    );
-
-    console.log("\nToken status:");
-    console.log("-".repeat(50));
-    console.log(`Token mint:              ${mint.toBase58()}`);
-    console.log(`Associated bonding curve: ${bondingCurveAddress.toBase58()}`);
-    console.log(`Bump seed:               ${bump}`);
-    console.log("-".repeat(50));
+    const mint = new PublicKey(tokenInfo.mint);
+    const [bondingCurveAddress] = await getAssociatedBondingCurveAddress(mint, PUMP_PROGRAM_ID);
 
     const conn = new Connection(RPC_ENDPOINT, "confirmed");
     const curveState = await getBondingCurveState(conn, bondingCurveAddress);
 
-    console.log("\nBonding curve status:");
-    console.log("-".repeat(50));
-    console.log(`Completion status: ${curveState.complete ? "Completed" : "Not completed"}`);
-    if (curveState.complete) {
-      console.log("\nNote: This bonding curve has completed and liquidity has been migrated to PumpSwap.");
-    }
-    if (curveState.creator) {
-      console.log(`Creator: ${curveState.creator.toBase58()}`);
-    }
-    console.log("-".repeat(50));
+    const tokenPriceSol = calculateBondingCurvePrice(curveState);
 
-    // ✅ ذخیره توکن در DB
-    await saveTokenToDB(tokenInfo, tokenInfo.signature);
+    console.log("Token price:");
+    console.log(`  ${tokenPriceSol.toFixed(10)} SOL`);
 
-    // ارسال bondingCurveAddress به تابع main
-    await main(bondingCurveAddress.toBase58());
+    // ✅ اینجا دیگه رکورد قبلاً ساخته شده → فقط آپدیت می‌کنیم
+    await updateTokenInDB(tokenInfo.mint, curveState, tokenPriceSol);
 
   } catch (e: any) {
-    console.error(`\nError: ${e.message}`);
+    console.error("Error in checkTokenStatus:", e);
   }
 }
 
 
-// Run directly from CLI
+
 // if (require.main === module) {
 //   const mint = process.argv[2] || TOKEN_MINT;
-//   const tokenInfo: TokenInfo = {
-//     mint: mint
-//     // سایر فیلدها را با مقادیر پیش‌فرض پر کنید
-//     // ... بقیه فیلدها
-//   };
-//   checkTokenStatus(tokenInfo).catch(console.error);
+//   checkTokenStatus(mint).catch(console.error);
 // }
+
 
 // اگر می‌خواهید تابع main بدون پارامتر هم کار کند
 // async function mainWithoutParams() {

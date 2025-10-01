@@ -4,6 +4,7 @@ import { TokenInfo } from './types';
 import { checkTokenStatus } from './curve/get_bonding_curve_status';
 import { PrismaClient } from './generated/prisma';
 import { GetTokenCurve } from './curve/pump-listener';
+import { saveTokenToDB } from './services/dbService';
 
 // Load environment variables
 dotenv.config();
@@ -19,21 +20,22 @@ async function main() {
         // اینجا میتونید منطق پردازش توکن رو اضافه کنید
         console.log(`🆕 CURVE: ${tokenInfo.name}`);
             
-       try {
-        // تاخیر 70 ثانیه‌ای
-        await new Promise(resolve => setTimeout(resolve, 70000));
-        
-        // ✅ ارسال mint address به checkTokenStatus
-        await checkTokenStatus(tokenInfo);
+      /*  try {
+      // ✅ ذخیره اولیه با همه جزئیات
+      await saveTokenToDB(tokenInfo);
+
+      // ✅ چک کردن وضعیت بعد از تأخیر (فقط قیمت و state رو آپدیت می‌کنه)
+      await checkTokenStatus(tokenInfo);
         
     } catch (error:any) {
         console.error(`Error processing token: ${error.message}`);
-    }
-        // try {
-        //     await GetTokenCurve(tokenInfo.bondingCurve)
-        // } catch (error:any) {
-        //     console.error(`Error processing token: ${error.message}`);
-        // }
+    } */
+   
+        try {
+            await GetTokenCurve(tokenInfo.bondingCurve)
+        } catch (error:any) {
+            console.error(`Error processing token: ${error.message}`);
+        }
     };
     
     
