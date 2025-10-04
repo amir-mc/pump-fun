@@ -7,7 +7,8 @@
     "start": "ts-node src/index.ts",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "echo \"No tests specified\" && exit 0",
+     "studio": "prisma studio --browser none"
   },
   "dependencies": {
     "@coral-xyz/borsh": "^0.31.1",

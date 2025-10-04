@@ -1,7 +1,6 @@
-import { Connection, clusterApiUrl, PublicKey, ParsedTransactionWithMeta } from "@solana/web3.js";
-
-import { TokenInfo, TokenSelect } from "../types";
-import { PrismaClient } from "../generated/prisma";
+import { Connection, clusterApiUrl, PublicKey } from "@solana/web3.js";
+import { PrismaClient } from '../generated/prisma';
+import { error } from "console";
 
 // ایجاد کلاینت Prisma
 const prisma = new PrismaClient();
@@ -28,27 +27,13 @@ class TransactionWorker {
   private prisma: PrismaClient;
   private queue: string[] = [];
   private isProcessing: boolean = false;
-  private processingRate: number = 2000; // 2 ثانیه بین هر پردازش
-  private retryCount: number = 0;
-  private maxRetries: number = 3;
+  private processingRate: number = 3000; // 1 ثانیه بین هر پردازش
+ // private maxWorkers: number = 1; //
+
 
   constructor() {
-    this.connection = new Connection(
-      process.env.SOLANA_NODE_RPC_ENDPOINT || clusterApiUrl("mainnet-beta"),
-      "confirmed"
-    );
+    this.connection = new Connection(clusterApiUrl("mainnet-beta"), "confirmed");
     this.prisma = new PrismaClient();
-  }
-
-  // راه‌اندازی کل فرآیند
-  public async start(): Promise<void> {
-    console.log("🚀 Starting transaction worker...");
-    await this.loadFromDatabase({
-      limit: 50,
-      complete: false,
-      withPriceOnly: true,
-      recent: true
-    });
   }
 
   // اضافه کردن signature به صف
@@ -57,7 +42,7 @@ class TransactionWorker {
     console.log(`📥 Added to queue: ${signature.substring(0, 20)}... (Queue size: ${this.queue.length})`);
     
     if (!this.isProcessing) {
-      this.processQueue();
+      this.startProcessing();
     }
   }
 
@@ -67,12 +52,12 @@ class TransactionWorker {
     console.log(`📦 Added ${signatures.length} signatures to queue. Total: ${this.queue.length}`);
     
     if (!this.isProcessing) {
-      this.processQueue();
+      this.startProcessing();
     }
   }
 
-  // پردازش صف به صورت ترتیبی
-  private async processQueue(): Promise<void> {
+  // شروع پردازش صف
+  private async startProcessing(): Promise<void> {
     if (this.isProcessing) return;
     
     this.isProcessing = true;
@@ -80,31 +65,8 @@ class TransactionWorker {
     
     while (this.queue.length > 0) {
       const signature = this.queue.shift()!;
-      console.log(`🔍 Processing: ${signature.substring(0, 20)}... | Remaining: ${this.queue.length}`);
-
-      try {
-        await this.processSignature(signature);
-        this.retryCount = 0; // reset retry after success
-      } catch (error: any) {
-        console.error(`❌ Error processing ${signature}:`, error.message);
-
-        // هندل محدودیت درخواست‌ها (429)
-        if (error.message.includes('429') || error.message.includes('rate limit')) {
-          this.retryCount++;
-          
-          if (this.retryCount <= this.maxRetries) {
-            const waitTime = Math.min(5000 * this.retryCount, 30000);
-            console.log(`⚠️ Rate limit detected. Waiting ${waitTime / 1000}s before retry...`);
-            await this.delay(waitTime);
-            this.queue.unshift(signature); // اضافه کردن مجدد به ابتدای صف
-          } else {
-            console.log(`❌ Max retries exceeded for ${signature}`);
-          }
-        } else {
-          console.error(`❌ Non-retryable error for ${signature}`);
-        }
-      }
-
+      await this.processSignature(signature);
+      
       // تاخیر بین پردازش‌ها
       if (this.queue.length > 0) {
         await this.delay(this.processingRate);
@@ -117,38 +79,49 @@ class TransactionWorker {
 
   // پردازش هر signature
   private async processSignature(signature: string): Promise<void> {
-    // بررسی وجود قیمت در دیتابیس
-    const hasPrice = await this.hasTokenPrice(signature);
-    if (!hasPrice) {
-      console.log(`⏭️ Skipping - No token price found`);
-      return;
+    try {
+      console.log(`\n🔍 Processing: ${signature.substring(0, 20)}...`);
+      
+      // بررسی وجود قیمت در دیتابیس
+      const hasPrice = await this.hasTokenPrice(signature);
+      if (!hasPrice) {
+        console.log(`⏭️ Skipping - No token price found`);
+        return;
+      }
+
+      // دریافت اطلاعات تراکنش
+      const tx = await this.connection.getParsedTransaction(signature, {
+        maxSupportedTransactionVersion: 0,
+        commitment: "confirmed",
+      });
+
+      if (!tx) {
+        console.error("❌ Transaction not found!");
+        return;
+      }
+
+      // نمایش اطلاعات
+      await this.displayTokenInfo(signature);
+      console.log("Block Time:", tx.blockTime ? new Date(tx.blockTime * 1000) : "Unknown");
+      console.log("Slot:", tx.slot);
+      console.log("Fee:", tx.meta?.fee ? `${tx.meta.fee / 1e9} SOL` : "Unknown");
+
+      await this.analyzeSOLChanges(tx);
+      await this.analyzeTokenChanges(tx);
+      await this.analyzeInstructions(tx);
+      
+      console.log("✅ Processing completed successfully");
+
+    } catch (error: any) {
+      if (error.message.includes('429')) {
+        console.log('⚠️ Rate limit detected. Waiting 3 seconds...');
+        await this.delay(3000);
+        // اضافه کردن مجدد به صف
+        this.queue.unshift(signature);
+      } else {
+        console.error(`❌ Error processing ${signature}:`, error.message);
+      }
     }
-
-    // دریافت اطلاعات تراکنش
-    const tx = await this.connection.getParsedTransaction(signature, {
-      maxSupportedTransactionVersion: 0,
-      commitment: "confirmed",
-    });
-
-    if (!tx) {
-      console.error("❌ Transaction not found!");
-      return;
-    }
-
-    // نمایش اطلاعات
-    await this.displayTokenInfo(signature);
-    console.log("Block Time:", tx.blockTime ? new Date(tx.blockTime * 1000) : "Unknown");
-    console.log("Slot:", tx.slot);
-    console.log("Fee:", tx.meta?.fee ? `${tx.meta.fee / 1e9} SOL` : "Unknown");
-
-    await this.analyzeSOLChanges(tx);
-    await this.analyzeTokenChanges(tx);
-    await this.analyzeInstructions(tx);
-    
-    // ذخیره اطلاعات پردازش شده
-    await this.saveProcessedTransaction(signature, tx);
-    
-    console.log("✅ Processing completed successfully");
   }
 
   // تابع برای لود کردن خودکار از دیتابیس
@@ -174,25 +147,7 @@ class TransactionWorker {
     }
   }
 
-  // ذخیره تراکنش پردازش شده
- private async saveProcessedTransaction(signature: string, tx: ParsedTransactionWithMeta): Promise<void> {
-  try {
-    const logs = tx.meta?.logMessages || [];
-    const buyer = tx.transaction.message.accountKeys[0]?.pubkey.toString() || 'Unknown';
-
-    // ذخیره در یک جدول موقت یا استفاده از روش جایگزین
-    console.log(`💾 Would save transaction data for: ${signature.substring(0, 20)}...`);
-    console.log(`   Buyer: ${buyer}, Logs: ${logs.length}, Slot: ${tx.slot}, Fee: ${tx.meta?.fee}`);
-    
-    // یا ذخیره در فایل
-    // await this.saveToFile(signature, { buyer, logCount: logs.length, slot: tx.slot });
-    
-  } catch (error) {
-    console.error('❌ Error processing transaction data:', error);
-  }
-}
-
-  // متدهای کمکی
+  // متدهای کمکی (مشابه کد قبلی)
   private async hasTokenPrice(signature: string): Promise<boolean> {
     try {
       const token = await this.prisma.token.findFirst({
@@ -250,13 +205,14 @@ class TransactionWorker {
         console.log(`   ${index + 1}. ${token.symbol} - ${token.name}`);
       });
 
-      return tokens.map((token) => token.signature);
+      return tokens.map(token => token.signature);
 
     } catch (error) {
       console.error('❌ Error fetching signatures from database:', error);
       return [];
     }
   }
+
   private async displayTokenInfo(signature: string): Promise<void> {
     try {
       const token = await this.prisma.token.findFirst({
@@ -280,12 +236,12 @@ class TransactionWorker {
     }
   }
 
-  private async analyzeSOLChanges(tx: ParsedTransactionWithMeta): Promise<void> {
+  private async analyzeSOLChanges(tx: any): Promise<void> {
     console.log("\n💰 SOL Balance Changes:");
     let totalSOLChange = 0;
     
-    tx.meta?.postBalances?.forEach((balance: number, i: number) => {
-      const pre = tx.meta?.preBalances?.[i] ?? 0;
+    tx.meta?.postBalances.forEach((balance: number, i: number) => {
+      const pre = tx.meta?.preBalances[i] ?? 0;
       const diff = balance - pre;
       
       if (diff !== 0) {
@@ -324,7 +280,8 @@ class TransactionWorker {
     }
   }
 
-  private async analyzeInstructions(tx: ParsedTransactionWithMeta): Promise<void> {
+
+  private async analyzeInstructions(tx: any): Promise<void> {
     console.log("\n⚡ Instructions Analysis:");
     const message = tx.transaction.message;
     const instructions = message.instructions;
@@ -335,7 +292,7 @@ class TransactionWorker {
     });
   }
 
-  private getAccountType(index: number, tx: ParsedTransactionWithMeta): string {
+  private getAccountType(index: number, tx: any): string {
     const message = tx.transaction.message;
     const account = message.accountKeys[index];
     
@@ -365,23 +322,53 @@ class TransactionWorker {
     this.queue = [];
     console.log('🧹 Queue cleared');
   }
-
-  // بستن اتصالات
-  public async disconnect(): Promise<void> {
-    await this.prisma.$disconnect();
-    console.log('🔌 Disconnected from database');
-  }
 }
 
-// اجرای اصلی
 (async () => {
   const worker = new TransactionWorker();
 
-  try {
-    await worker.start();
-  } catch (error) {
-    console.error('❌ Error in main execution:', error);
-  } finally {
-    await worker.disconnect();
-  }
+  // روش ۱: لود خودکار از دیتابیس
+  console.log('🚀 Loading transactions from database...');
+  await worker.loadFromDatabase({
+    limit: 20,
+    complete: false,
+    withPriceOnly: true
+  });
 })();
+
+// ✨ استفاده  با دیتابیس
+// (async () => {
+//   const analyzer = new AdvancedTransactionAnalyzer();
+//   //محدودیت پردازش و محدویت دیتابیس
+//   await analyzer.analyzeFromDatabase({
+//     dbLimit: 100,      
+//     processLimit: 9,  
+//     withPriceOnly: true
+//   });
+//   // روش ۱: خواندن همه signatures 
+//   // await analyzer.analyzeFromDatabase({
+//   //   limit: 8,
+//   //   complete: false,
+//   //   withPriceOnly:true
+//   // });
+
+//   // روش ۲: خواندن با فیلترهای خاص
+//   // await analyzer.analyzeFromDatabase({
+//   //   limit: 5,
+//   //   filters: {
+//   //     symbol: 'SOL', // فیلتر بر اساس نماد
+//   //     minSupply: BigInt(1000000), // حداقل supply
+//   //     dateRange: {
+//   //       start: new Date('2024-01-01'),
+//   //       end: new Date()
+//   //     }
+//   //   },
+//   //   withPriceOnly:false
+//   // });
+
+//   // روش ۳: فقط تراکنش‌های complete شده
+//   // await analyzer.analyzeFromDatabase({
+//   //   limit: 15,
+//   //   complete: true
+//   // });
+// })();

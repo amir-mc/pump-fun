@@ -39,13 +39,13 @@ async function main() {
     };
     
     
-    try {
-        console.log("👂 Starting to listen for new Pump.fun tokens...");
-        await listener.startListening(handleNewToken);
-    } catch (error) {
-        console.error("❌ Error starting listener:", error);
-        process.exit(1);
-    }
+    // try {
+    //     console.log("👂 Starting to listen for new Pump.fun tokens...");
+    //     await listener.startListening(handleNewToken);
+    // } catch (error) {
+    //     console.error("❌ Error starting listener:", error);
+    //     process.exit(1);
+    // }
 
    
 }

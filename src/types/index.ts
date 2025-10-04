@@ -28,3 +28,8 @@ export interface ParsedCreateData {
     user?: string;
     creator?: string;
 }
+export interface TokenSelect {
+  signature: string | null;
+  symbol: string | null;
+  name: string | null;
+}
