@@ -14,17 +14,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 model Token {
-  mintAddress   String   @id @unique
-  name          String
-  symbol        String
-  bondingCurve  String
-  creator       String
-  signature     String
-  timestamp     DateTime
-  Tokenprice    String
-  totalSupply   BigInt
-  complete      Boolean
-  createdAt     DateTime @default(now())
+  mintAddress          String   @id @unique
+  name                 String
+  symbol               String
+  bondingCurve         String
+  creator              String
+  signature            String
+  timestamp            DateTime
+  Tokenprice           String
+  totalSupply          BigInt
+  complete             Boolean
+  virtualTokenReserves BigInt
+  virtualSolReserves   BigInt
+  realTokenReserves    BigInt
+  realSolReserves      BigInt
+  createdAt            DateTime @default(now())
 }
 
 // model BondingCurveTest {

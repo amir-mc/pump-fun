@@ -5,7 +5,7 @@
  * Pump.fun docs:
  * https://github.com/pump-fun/pump-public-docs/blob/main/docs/PUMP_CREATOR_FEE_README.md
  */
-
+//get_bonding_curve_status.ts
 import { clusterApiUrl, Connection, PublicKey } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 import { TokenInfo } from "../types";

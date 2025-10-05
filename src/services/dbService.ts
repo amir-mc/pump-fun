@@ -31,6 +31,10 @@ export async function saveTokenToDB(tokenInfo: TokenInfo) {
         Tokenprice: "0",          // مقدار اولیه
         totalSupply: BigInt(0),   // مقدار اولیه
         complete: false,
+        virtualTokenReserves: BigInt(0),    // مقدار اولیه
+        virtualSolReserves: BigInt(0),      // مقدار اولیه
+        realTokenReserves: BigInt(0),       // مقدار اولیه
+        realSolReserves: BigInt(0),         // مقدار اولیه
       },
     });
 
@@ -50,14 +54,12 @@ export async function updateTokenInDB(
   tokenPriceSol?: number
 ) {
   try {
-    // تبدیل قیمت به رشته با دقت (Tokenprice در schema از نوع String است)
     const priceStr =
       typeof tokenPriceSol === "number"
         ? tokenPriceSol.toFixed(10)
         : (() => {
-            // fallback: compute from reserves if possible (virtual reserves)     
-              const LAMPORTS_PER_SOL = 1_000_000_000n;
-              const TOKEN_DECIMALS = 6n;
+            const LAMPORTS_PER_SOL = 1_000_000_000n;
+            const TOKEN_DECIMALS = 6n;
             try {
               const sol = Number(bondingCurveState.virtual_sol_reserves) / Number(LAMPORTS_PER_SOL);
               const tokens = Number(bondingCurveState.virtual_token_reserves) / 10 ** Number(TOKEN_DECIMALS);
@@ -74,12 +76,15 @@ export async function updateTokenInDB(
         totalSupply: bondingCurveState.token_total_supply,
         complete: bondingCurveState.complete,
         creator: bondingCurveState.creator ? bondingCurveState.creator.toBase58() : undefined,
+        virtualTokenReserves: bondingCurveState.virtual_token_reserves,
+        virtualSolReserves: bondingCurveState.virtual_sol_reserves,
+        realTokenReserves: bondingCurveState.real_token_reserves,
+        realSolReserves: bondingCurveState.real_sol_reserves,
       },
     });
 
     console.log(`🔄 Token ${mintAddress} updated with curve data`);
   } catch (err: any) {
-    // اگر رکورد پیدا نشد (P2025) => fallback: بساز رکورد minimal
     if (err.code === "P2025") {
       console.warn(`⚠️ Token ${mintAddress} not found for update — creating minimal record...`);
       try {
@@ -95,6 +100,10 @@ export async function updateTokenInDB(
             Tokenprice: tokenPriceSol ? tokenPriceSol.toFixed(10) : "0",
             totalSupply: bondingCurveState.token_total_supply,
             complete: bondingCurveState.complete,
+            virtualTokenReserves: bondingCurveState.virtual_token_reserves,
+            virtualSolReserves: bondingCurveState.virtual_sol_reserves,
+            realTokenReserves: bondingCurveState.real_token_reserves,
+            realSolReserves: bondingCurveState.real_sol_reserves,
           },
         });
         console.log(`✅ Minimal token ${mintAddress} created as fallback`);
