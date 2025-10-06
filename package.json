@@ -8,7 +8,7 @@
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "test": "echo \"No tests specified\" && exit 0",
-     "studio": "prisma studio --browser none"
+    "studio": "prisma studio --browser none"
   },
   "dependencies": {
     "@coral-xyz/borsh": "^0.31.1",
@@ -18,12 +18,14 @@
     "bs58": "^5.0.0",
     "buffer-layout": "^1.2.2",
     "dotenv": "^16.6.1",
+    "node-fetch": "^2.7.0",
     "python-struct": "^1.1.3",
     "solders": "^0.0.1-security",
     "ws": "^8.14.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.13",
     "@types/ws": "^8.5.0",
     "prisma": "^6.16.2",
     "ts-node": "^10.9.0",

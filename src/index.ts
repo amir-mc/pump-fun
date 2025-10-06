@@ -6,7 +6,7 @@ import { checkTokenStatus } from './curve/get_bonding_curve_status';
 import { PrismaClient } from './generated/prisma';
 import { GetTokenCurve } from './curve/pump-listener';
 import { saveTokenToDB } from './services/dbService';
-import { GetTokenPrice } from './Token/PriceTracker';
+
 
 // Load environment variables
 dotenv.config();
@@ -33,11 +33,11 @@ async function main() {
         console.error(`Error processing token: ${error.message}`);
     } 
    
-        // try {
-        //     await GetTokenCurve(tokenInfo.bondingCurve)
-        // } catch (error:any) {
-        //     console.error(`Error processing token: ${error.message}`);
-        // }
+        try {
+            await GetTokenCurve(tokenInfo.bondingCurve)
+        } catch (error:any) {
+            console.error(`Error processing token: ${error.message}`);
+        }
 
         // try {
         //     await GetTokenPrice(tokenInfo.mint)
@@ -52,13 +52,13 @@ async function main() {
     
     
     //موقتا غیر فعال
-    try {
-        console.log("👂 Starting to listen for new Pump.fun tokens...");
-        await listener.startListening(handleNewToken);
-    } catch (error) {
-        console.error("❌ Error starting listener:", error);
-        process.exit(1);
-    }
+    // try {
+    //     console.log("👂 Starting to listen for new Pump.fun tokens...");
+    //     await listener.startListening(handleNewToken);
+    // } catch (error) {
+    //     console.error("❌ Error starting listener:", error);
+    //     process.exit(1);
+    // }
 
    
 }

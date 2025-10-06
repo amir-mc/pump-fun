@@ -90,7 +90,7 @@ async function getAssociatedBondingCurveAddress(
 /**
  * Fetch bonding curve account state
  */
-async function getBondingCurveState(
+export async function getBondingCurveState(
   conn: Connection,
   curveAddress: PublicKey
 ): Promise<BondingCurveState> {
