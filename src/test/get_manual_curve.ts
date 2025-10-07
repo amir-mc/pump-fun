@@ -17,7 +17,7 @@ const RPC_ENDPOINT = process.env.SOLANA_NODE_RPC_ENDPOINT || "https://api.mainne
 const prisma = new PrismaClient();
 
 // استفاده از آدرس واقعی Pump program
-const PUMP_PROGRAM_ID = new PublicKey("3YwsW2kjLjbrMyj36Lo6GvdwzHkYeN7cNax8Deyypump");
+const PUMP_PROGRAM_ID = new PublicKey("A4mfqtbZQgbRrad9WtJQeRqkBZG3gVjiUApag9ysWByJ");
 const EXPECTED_DISCRIMINATOR = Buffer.alloc(8);
 EXPECTED_DISCRIMINATOR.writeBigUInt64LE(6966180631402821399n, 0);
 
@@ -105,31 +105,89 @@ export async function getBondingCurveState(
 /**
  * Get recent signatures for an address and save to database
  */
-async function getAndSaveSignatures(conn: Connection, curveAddress: PublicKey, curveState: BondingCurveState) {
+/**
+ * Get and save only BUY transactions (from bonding curve → user wallets)
+ * - فقط وقتی curve توکن فرستاده (یعنی کاربر خریده)
+ * - تراکنش‌هایی با error ذخیره نمی‌شوند
+ */
+async function getAndSaveSignatures(
+  conn: Connection,
+  curveAddress: PublicKey,
+  curveState: BondingCurveState
+) {
   try {
-    // دریافت 50 signature اول
     const signatures = await conn.getSignaturesForAddress(curveAddress, { limit: 50 });
     console.log(`📝 Found ${signatures.length} signatures for bonding curve`);
-    
-    // ذخیره در دیتابیس
+
+    const curveBase58 = curveAddress.toBase58();
+
     for (const sig of signatures) {
       try {
+        if (sig.err) {
+          console.log(`⚠️ Skipping errored transaction: ${sig.signature}`);
+          continue;
+        }
+
+        const tx = await conn.getTransaction(sig.signature, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+
+        if (!tx || !tx.meta || !tx.transaction) continue;
+
+        const accountKeys = tx.transaction.message.getAccountKeys().staticAccountKeys.map(
+          (key: PublicKey) => key.toBase58()
+        );
+        const curveIndex = accountKeys.indexOf(curveBase58);
+        if (curveIndex === -1) continue;
+
+        const preBalances = tx.meta.preBalances || [];
+        const postBalances = tx.meta.postBalances || [];
+
+        // محاسبه مجموع balances به صورت BigInt
+        const totalPreBalance = preBalances.reduce((sum, balance) => sum + BigInt(balance), BigInt(0));
+        const totalPostBalance = postBalances.reduce((sum, balance) => sum + BigInt(balance), BigInt(0));
+
+        // یا اگر می‌خواهید فقط balance مربوط به curve address رو ذخیره کنید:
+        const curvePreBalance = BigInt(preBalances[curveIndex] || 0);
+        const curvePostBalance = BigInt(postBalances[curveIndex] || 0);
+
+        const preBalancesSOL = preBalances.map(b => Number(b) / 1_000_000_000);
+        const postBalancesSOL = postBalances.map(b => Number(b) / 1_000_000_000);
+
+        // بررسی تغییرات توکن (خرید)
+        const preTokenBalances = tx.meta.preTokenBalances || [];
+        const postTokenBalances = tx.meta.postTokenBalances || [];
+
+        const curveTokenBefore = preTokenBalances.find(b => b.owner === curveBase58);
+        const curveTokenAfter = postTokenBalances.find(b => b.owner === curveBase58);
+
+        if (!curveTokenBefore || !curveTokenAfter) continue;
+
+        const beforeAmount = BigInt(curveTokenBefore.uiTokenAmount.amount);
+        const afterAmount = BigInt(curveTokenAfter.uiTokenAmount.amount);
+        const tokenSentOut = afterAmount < beforeAmount;
+        if (!tokenSentOut) continue;
+
+        console.log(`🟢 BUY detected: ${sig.signature} (curve sent tokens to user)`);
+
         await prisma.bondingCurveSignature.upsert({
           where: { signature: sig.signature },
           update: {
             slot: sig.slot,
             blockTime: sig.blockTime,
-            confirmationStatus: sig.confirmationStatus || 'finalized',
-            error: sig.err ? JSON.stringify(sig.err) : null,
+            confirmationStatus: sig.confirmationStatus || "finalized",
             memo: sig.memo || null,
+            preBalances: totalPreBalance, // یا curvePreBalance
+            postBalances: totalPostBalance, // یا curvePostBalance
           },
           create: {
             signature: sig.signature,
-            curveAddress: curveAddress.toBase58(),
+            curveAddress: curveBase58,
             slot: sig.slot,
             blockTime: sig.blockTime,
-            confirmationStatus: sig.confirmationStatus || 'finalized',
-            error: sig.err ? JSON.stringify(sig.err) : null,
+            confirmationStatus: sig.confirmationStatus || "finalized",
+            error: null,
             memo: sig.memo || null,
             virtualTokenReserves: curveState.virtual_token_reserves.toString(),
             virtualSolReserves: curveState.virtual_sol_reserves.toString(),
@@ -138,20 +196,22 @@ async function getAndSaveSignatures(conn: Connection, curveAddress: PublicKey, c
             tokenTotalSupply: curveState.token_total_supply.toString(),
             complete: curveState.complete,
             creator: curveState.creator?.toBase58(),
-          }
+            preBalances: totalPreBalance, // یا curvePreBalance
+            postBalances: totalPostBalance, // یا curvePostBalance
+          },
         });
-      } catch (dbError) {
-        console.error(`❌ Error saving signature ${sig.signature}:`, dbError);
+
+      } catch (txError) {
+        console.error(`⚠️ Error processing transaction ${sig.signature}:`, txError);
       }
     }
-    
-    console.log(`💾 Saved ${signatures.length} signatures to database`);
-    return signatures;
+
+    console.log(`💾 Saved BUY (curve → wallet) transactions successfully`);
   } catch (error: any) {
     console.error(`❌ Error fetching/saving signatures: ${error.message}`);
-    return [];
   }
 }
+
 
 /**
  * Calculate price from bonding curve state
