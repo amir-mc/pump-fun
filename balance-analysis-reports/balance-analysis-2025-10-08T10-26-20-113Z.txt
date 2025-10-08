@@ -1,0 +1,181 @@
+📊 BALANCE CHANGE ANALYSIS REPORT
+Generated at: ۱۴۰۴/۷/۱۶, ۱۳:۵۶:۲۰
+Total Transactions Analyzed: 18
+Transactions With Timestamp: 18
+Transactions Without Timestamp: 0
+==================================================
+
+📈 SUMMARY STATISTICS
+Total Balance Change: ‎−۵۳۰٬۰۰۰ lamports
+Total Balance Change: -0.000530 SOL
+Average Change per Transaction: ‎−۲۹٬۴۴۴ lamports
+Average Change: -0.000029 SOL
+
+🚀 MAXIMUM INCREASE
+Signature: 4N7Mig1K6tr38EDi5CW49k6bpXscjDJriAtoWcHSizxYbjxfTUk1y1FyzrrBh4kXd628bzjXpfu35uMSQufgUAyd
+Time: ۱۴۰۴/۷/۱۴ ۱۰:۵۷:۱۲
+Change: +‎−۵٬۰۰۰ lamports
+Change: +-0.000005 SOL
+Percentage: +0.00%
+
+📉 MAXIMUM DECREASE
+Signature: 54qy1Zs2FVqo7jDDpdCmjf6nNdjDypaPNSJfUUGXT7fXUPsYe5afEV2dQWje1aY6ziZZQGmkf1zyGX6RgY4AXSYU
+Time: ۱۴۰۴/۷/۱۴ ۱۰:۳۲:۳۲
+Change: ‎−۲۲۵٬۰۰۰ lamports
+Change: -0.000225 SOL
+Percentage: 0.00%
+
+🕐 HOURLY DISTRIBUTION (18 transactions with timestamp)
+Hour 10:00-11:00: 3 transactions, Change: ‎−۴۵۵٬۰۰۰ lamports (-0.000455 SOL)
+Hour 11:00-12:00: 1 transactions, Change: ‎−۵٬۰۰۰ lamports (-0.000005 SOL)
+Hour 12:00-13:00: 6 transactions, Change: ‎−۳۰٬۰۰۰ lamports (-0.000030 SOL)
+Hour 13:00-14:00: 6 transactions, Change: ‎−۳۰٬۰۰۰ lamports (-0.000030 SOL)
+Hour 14:00-15:00: 1 transactions, Change: ‎−۵٬۰۰۰ lamports (-0.000005 SOL)
+Hour 15:00-16:00: 1 transactions, Change: ‎−۵٬۰۰۰ lamports (-0.000005 SOL)
+
+📋 DETAILED TRANSACTION LIST
+==================================================
+
+1. 54qy1Zs2FVqo7jDDpdCmjf6nNdjDypaPNSJfUUGXT7fXUPsYe5afEV2dQWje1aY6ziZZQGmkf1zyGX6RgY4AXSYU
+   Time: ۱۴۰۴/۷/۱۴ ۱۰:۳۲:۳۲
+   Pre-Balance: ۲۱٬۳۷۹٬۹۶۲٬۴۶۴٬۸۶۷ lamports
+   Post-Balance: ۲۱٬۳۷۹٬۹۶۲٬۲۳۹٬۸۶۷ lamports
+   Change: ‎−۲۲۵٬۰۰۰ lamports
+   Change: -0.000225 SOL
+   Percentage: +0.00%
+
+2. 45UGQXdnegvCVzWL6x1VuuMQGA7npEjStxr7q691VxF1dFNz4PMfueCnncSZk2NVeCQ3Ddbocb6udwoHZQB6SsDA
+   Time: ۱۴۰۴/۷/۱۴ ۱۰:۳۵:۵۸
+   Pre-Balance: ۲۱٬۳۸۳٬۲۹۶٬۹۳۸٬۱۳۴ lamports
+   Post-Balance: ۲۱٬۳۸۳٬۲۹۶٬۷۱۳٬۱۳۴ lamports
+   Change: ‎−۲۲۵٬۰۰۰ lamports
+   Change: -0.000225 SOL
+   Percentage: +0.00%
+
+3. 4N7Mig1K6tr38EDi5CW49k6bpXscjDJriAtoWcHSizxYbjxfTUk1y1FyzrrBh4kXd628bzjXpfu35uMSQufgUAyd
+   Time: ۱۴۰۴/۷/۱۴ ۱۰:۵۷:۱۲
+   Pre-Balance: ۲۱٬۳۹۴٬۷۶۸٬۴۵۸٬۷۲۱ lamports
+   Post-Balance: ۲۱٬۳۹۴٬۷۶۸٬۴۵۳٬۷۲۱ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+4. 2DrGBDQTCeB5qrasGNRu9jvrBupV5fTPVU5aKnwTt7QAvURSxFia1wya1kxyyFn3a7CvWbv7rtzsTRVtG6TtoWxc
+   Time: ۱۴۰۴/۷/۱۴ ۱۱:۴۱:۲۵
+   Pre-Balance: ۲۱٬۴۲۱٬۵۰۰٬۲۳۵٬۲۷۶ lamports
+   Post-Balance: ۲۱٬۴۲۱٬۵۰۰٬۲۳۰٬۲۷۶ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+5. 32Sxvcnw5qMtyKUuJ7d9nRcHkN387hSUYyoKWhx7zrQwkcFw9oiFygQMAB3FRMqxE5xWkEuRng2NbGsXTEE1BLVG
+   Time: ۱۴۰۴/۷/۱۴ ۱۲:۱۴:۰۶
+   Pre-Balance: ۲۱٬۴۴۱٬۴۷۹٬۲۹۶٬۵۷۹ lamports
+   Post-Balance: ۲۱٬۴۴۱٬۴۷۹٬۲۹۱٬۵۷۹ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+6. LUx8Fkst84bRKGjD2PBdMLYivHtULYvZy65ZTSg4LWdMMuo5CQLMAat1yxHTfXKb68Wt1JNjiXdhNhG84vdzmnU
+   Time: ۱۴۰۴/۷/۱۴ ۱۲:۱۶:۱۶
+   Pre-Balance: ۲۱٬۴۴۲٬۳۶۹٬۴۱۳٬۳۲۵ lamports
+   Post-Balance: ۲۱٬۴۴۲٬۳۶۹٬۴۰۸٬۳۲۵ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+7. 3zzZZHFYMDKzxGWyAFSdFYUeqeBQtgcjUuAhzzPQWmiaTRpr2wUtTJnnoyvMCKapt4BaTy3Ff4EFRZDs4rmiEnDe
+   Time: ۱۴۰۴/۷/۱۴ ۱۲:۲۷:۵۰
+   Pre-Balance: ۲۱٬۴۴۹٬۷۶۷٬۰۶۱٬۲۷۲ lamports
+   Post-Balance: ۲۱٬۴۴۹٬۷۶۷٬۰۵۶٬۲۷۲ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+8. 3dUg84D61uXmPdFaM9jb32j3HuQAphVgoApqixSXF8iMw12qJJE6A9z9NtkPMpThyNENWYQ4PuTyzc61kVJinsi2
+   Time: ۱۴۰۴/۷/۱۴ ۱۲:۳۵:۰۵
+   Pre-Balance: ۲۱٬۴۵۳٬۴۰۳٬۱۰۲٬۹۳۶ lamports
+   Post-Balance: ۲۱٬۴۵۳٬۴۰۳٬۰۹۷٬۹۳۶ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+9. 32QUag5uQKpixCJ7Y56tkpyT7xRhJJ4NcU9h2Z1j1aNt4XqGBHvb5CzG4wz599J5XrpmwvhAcdZPUghBoebrgsdh
+   Time: ۱۴۰۴/۷/۱۴ ۱۲:۴۸:۱۵
+   Pre-Balance: ۲۱٬۴۶۰٬۴۹۰٬۴۲۷٬۴۷۱ lamports
+   Post-Balance: ۲۱٬۴۶۰٬۴۹۰٬۴۲۲٬۴۷۱ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+10. 54adg1mfbEJuHdxfHttnPhbhnXMAgXyQqFLWko8nHctiwoLsTLSQxKzSeRb1Ch5bXPCEe9zCe13asdg9BbFjCqCv
+   Time: ۱۴۰۴/۷/۱۴ ۱۲:۵۸:۰۹
+   Pre-Balance: ۲۱٬۴۶۵٬۶۷۹٬۴۴۵٬۵۰۳ lamports
+   Post-Balance: ۲۱٬۴۶۵٬۶۷۹٬۴۴۰٬۵۰۳ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+11. 3RyyQ6DtiyipGDrA15JBwrUUNCskhobT6d5NE7YnsSGhTTrPtD3ToajYr7TBHfxiEXeUXcYfyTRYf2hMD6iA2PiN
+   Time: ۱۴۰۴/۷/۱۴ ۱۳:۰۷:۲۱
+   Pre-Balance: ۲۱٬۴۷۱٬۱۱۸٬۰۱۶٬۷۷۹ lamports
+   Post-Balance: ۲۱٬۴۷۱٬۱۱۸٬۰۱۱٬۷۷۹ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+12. 3tkd9hdMwF5W1AkcaGLyByZuNxahoS1JcGooZ4bCucP6nRSPabhJCGrL5gmEieC6wY5fhSHd3okZ1Uz8CPfTgAwB
+   Time: ۱۴۰۴/۷/۱۴ ۱۳:۱۲:۳۳
+   Pre-Balance: ۲۱٬۴۷۴٬۱۲۳٬۹۱۳٬۳۵۷ lamports
+   Post-Balance: ۲۱٬۴۷۴٬۱۲۳٬۹۰۸٬۳۵۷ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+13. 5GTSt6EpczU3BdYYJVQDN5q4S16y4nE6qhoP52obESzQxnoxB9SHpwNB2UFy469juM39jjEfXqjv5hY4Jrqvk3m3
+   Time: ۱۴۰۴/۷/۱۴ ۱۳:۴۳:۰۱
+   Pre-Balance: ۲۱٬۴۹۵٬۸۴۷٬۹۲۷٬۸۲۳ lamports
+   Post-Balance: ۲۱٬۴۹۵٬۸۴۷٬۹۲۲٬۸۲۳ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+14. 3LpMgXdZoTRTkNTyhugf7tTv2yNAVsc3RdaNSdyAq4iyh19tzp3cei5Z5WZQNHTfgiDfgbUWRUz7G7KAANGwumUL
+   Time: ۱۴۰۴/۷/۱۴ ۱۳:۵۴:۲۷
+   Pre-Balance: ۲۱٬۵۰۲٬۸۰۶٬۶۹۵٬۰۳۰ lamports
+   Post-Balance: ۲۱٬۵۰۲٬۸۰۶٬۶۹۰٬۰۳۰ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+15. 4PRGdeavVpEBf1pLoDrC3LfAf3oJkGt161HouBcWstZAoF8BvbWbhPHGFLs3GGZS71txp2u6c1aDxvY3M1UsMcTY
+   Time: ۱۴۰۴/۷/۱۴ ۱۳:۵۶:۱۳
+   Pre-Balance: ۲۱٬۵۰۴٬۱۴۵٬۵۸۹٬۱۳۳ lamports
+   Post-Balance: ۲۱٬۵۰۴٬۱۴۵٬۵۸۴٬۱۳۳ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+16. 4xQcqkM72CCcGxa5LhktXN1CgKbhHiTMY1x2a6khUYWh71hmNWMLWtRx4ZCxqToiif7ykherfhFqsA7yJu27izAD
+   Time: ۱۴۰۴/۷/۱۴ ۱۳:۵۷:۵۵
+   Pre-Balance: ۲۱٬۵۰۵٬۱۶۵٬۳۵۱٬۵۶۷ lamports
+   Post-Balance: ۲۱٬۵۰۵٬۱۶۵٬۳۴۶٬۵۶۷ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+17. RTiG1dujqoPEnuN97eZ4uFoFQ2wchx6oc9iSXAdEKiZFu5tFo3pfYfNcan4ZLekh7nYBqpG6s5EXh9vtfLedu9P
+   Time: ۱۴۰۴/۷/۱۴ ۱۴:۰۰:۴۰
+   Pre-Balance: ۲۱٬۵۰۶٬۴۷۲٬۳۶۱٬۰۹۳ lamports
+   Post-Balance: ۲۱٬۵۰۶٬۴۷۲٬۳۵۶٬۰۹۳ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
+
+18. 4bfGb286aBGDphgck3ppDKpEjRJxbpEQ1NDrGcDM6hJQe4AbsxTnr9YZcWTmxbPhEW66HVJE31fJVSp7ZBrBoy1w
+   Time: ۱۴۰۴/۷/۱۴ ۱۵:۱۳:۱۷
+   Pre-Balance: ۲۱٬۵۷۷٬۱۳۳٬۵۰۹٬۱۰۹ lamports
+   Post-Balance: ۲۱٬۵۷۷٬۱۳۳٬۵۰۴٬۱۰۹ lamports
+   Change: ‎−۵٬۰۰۰ lamports
+   Change: -0.000005 SOL
+   Percentage: +0.00%
