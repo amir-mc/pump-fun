@@ -1,78 +1,121 @@
-// fixed_balance_analysis.ts
+// getAth.ts
 import { PrismaClient } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
-async function fixedBalanceAnalysis(): Promise<void> {
-  try {
-    console.log("🔍 Analyzing balance changes...");
+const LAMPORTS_PER_SOL = 1_000_000_000n;
+const TOKEN_DECIMALS = 6n;
 
-    const signatures = await prisma.bondingCurveSignature.findMany({
-      orderBy: {
-        blockTime: 'asc'
-      }
+function lamportsToSol(l: bigint) {
+  return Number(l) / Number(LAMPORTS_PER_SOL);
+}
+
+export async function getAth(curveAddress?: string) {
+  try {
+    const where = curveAddress ? { curveAddress } : {};
+    const rows = await prisma.bondingCurveSignature.findMany({
+      where,
+      orderBy: { blockTime: "asc" },
+      // select fields that might exist:
+      select: {
+        id: true,
+        signature: true,
+        blockTime: true,
+        preBalances: true,
+        postBalances: true,
+        virtualSolReserves: true,
+        virtualTokenReserves: true,
+        realSolReserves: true,
+        // اگر فیلدهای جدید را اضافه کردی:
+        // tokenSentOut: true,
+        // priceLamports: true,
+        // priceSol: true,
+      } as any,
     });
 
-    if (signatures.length === 0) {
-      console.log("❌ No transactions found");
+    if (!rows || rows.length === 0) {
+      console.log("⚠️ No rows found.");
       return;
     }
 
-    const totalPostBalance = signatures.reduce((sum, sig) => sum + sig.postBalances, 0n);
-    const totalPreBalance = signatures.reduce((sum, sig) => sum + sig.preBalances, 0n);
-    const totalBalanceChange = totalPostBalance - totalPreBalance;
+    type RowPrice = {
+      signature: string;
+      blockTime: number | null;
+      priceSol: number;
+      method: string;
+    };
 
-    const LAMPORTS_PER_SOL = 1_000_000_000;
+    const priceList: RowPrice[] = [];
 
-    // محاسبه درصد با دقت بیشتر
-    const growthPercentage = totalPreBalance !== 0n 
-      ? Number((totalBalanceChange * 1000000000000n) / totalPreBalance) / 10000000000 // دقت بیشتر
-      : totalBalanceChange > 0n ? 100 : 0;
+    for (const r of rows) {
+      // 1) اگر priceLamports/priceSol رو در DB ذخیره کردی از اون استفاده کن (اولویت)
+      // (در این select فعلاً این فیلد نیست؛ اگر اضافه کردی، اول اون رو بررسی کن)
 
-    // نمایش نتایج
-    console.log("\n📊 BALANCE ANALYSIS RESULTS");
-    console.log("============================");
-    console.log(`Total Transactions: ${signatures.length}`);
-    console.log(`Total Pre-Balance: ${totalPreBalance.toString()} lamports`);
-    console.log(`Total Pre-Balance: ${(Number(totalPreBalance) / LAMPORTS_PER_SOL).toFixed(6)} SOL`);
-    console.log(`Total Post-Balance: ${totalPostBalance.toString()} lamports`);
-    console.log(`Total Post-Balance: ${(Number(totalPostBalance) / LAMPORTS_PER_SOL).toFixed(6)} SOL`);
-    console.log(`Total Balance Change: ${totalBalanceChange.toString()} lamports`);
-    console.log(`Total Balance Change: ${(Number(totalBalanceChange) / LAMPORTS_PER_SOL).toFixed(9)} SOL`);
-    console.log(`Growth Percentage: ${growthPercentage.toFixed(10)}%`);
-    console.log("============================\n");
+      // 2) اگر tokenSentOut موجود باشه (و pre/post ذخیره شده باشه) => محاسبه‌ی price از تراکنش
+      try {
+        const pre = (r.preBalances !== null && r.preBalances !== undefined) ? BigInt(r.preBalances) : null;
+        const post = (r.postBalances !== null && r.postBalances !== undefined) ? BigInt(r.postBalances) : null;
 
-    // نمایش جزئیات با زمان میلادی
-    console.log("📋 TRANSACTION DETAILS:");
-    signatures.forEach((sig, index) => {
-      const change = sig.postBalances - sig.preBalances;
-      
-      // محاسبه درصد با دقت بیشتر برای هر تراکنش
-      const changePercentage = sig.preBalances !== 0n 
-        ? Number((change * 1000000000000n) / sig.preBalances) / 10000000000
-        : change > 0n ? 100 : 0;
-      
-      // زمان میلادی
-      const dateTime = sig.blockTime 
-        ? new Date(sig.blockTime * 1000).toISOString()
-        : 'N/A';
+        if (pre !== null && post !== null) {
+          // فرض: pre/post مربوط به curve account هستند (از getAndSaveSignatures اصلاح‌شده)
+          const solDiff = post - pre; // lamports
+          // اما ما نیاز به tokenSentOut داریم؛ اگر در DB ذخیره‌شده از آن استفاده کن. 
+          // در غیر اینصورت fallback به استفاده از virtual reserves برای تخمین قیمت:
+          // -> برای حالا: اگر tokenSentOut نداریم، از virtual reserves استفاده می‌کنیم.
+        }
 
-      console.log(`${index + 1}. ${sig.signature}`);
-      console.log(`   Time: ${dateTime}`);
-      console.log(`   Pre: ${sig.preBalances.toString()} lamports`);
-      console.log(`   Post: ${sig.postBalances.toString()} lamports`);
-      console.log(`   Change: ${change.toString()} lamports`);
-      console.log(`   Change: ${(Number(change) / LAMPORTS_PER_SOL).toFixed(9)} SOL`);
-      console.log(`   Change %: ${changePercentage.toFixed(10)}%`);
-      console.log("   ---");
-    });
+        // fallback: use virtual reserves if present
+        if (r.virtualSolReserves && r.virtualTokenReserves) {
+          const vs = BigInt(r.virtualSolReserves);
+          const vt = BigInt(r.virtualTokenReserves);
 
-  } catch (error) {
-    console.error('❌ Error in balance analysis:', error);
+          if (vs > 0n && vt > 0n) {
+            const virtualSol = Number(vs) / 1e9;
+            const virtualTokens = Number(vt) / Math.pow(10, Number(TOKEN_DECIMALS));
+            const priceSol = virtualSol / virtualTokens;
+            priceList.push({
+              signature: r.signature,
+              blockTime: r.blockTime,
+              priceSol,
+              method: "virtual-reserves-fallback",
+            });
+            continue;
+          }
+        }
+      } catch (e) {
+        // ignore row if can't compute
+      }
+    }
+
+    if (priceList.length === 0) {
+      console.log("⚠️ No computable prices found (add tokenSentOut/price to DB to compute exact swap prices).");
+      return;
+    }
+
+    // initial price = first available price
+    const initial = priceList[0];
+    let ath = priceList[0];
+    for (const p of priceList) {
+      if (p.priceSol > ath.priceSol) ath = p;
+    }
+
+    const percentGain = ((ath.priceSol - initial.priceSol) / initial.priceSol) * 100;
+    const athDate = ath.blockTime ? new Date(ath.blockTime * 1000).toLocaleString() : "unknown";
+
+    console.log("📈 ATH Results:");
+    console.log(`  Initial price (${initial.method}) = ${initial.priceSol} SOL`);
+    console.log(`  ATH price (${ath.method}) = ${ath.priceSol} SOL`);
+    console.log(`  Growth: +${percentGain.toFixed(2)}%`);
+    console.log(`  ATH time: ${athDate}`);
+  } catch (err: any) {
+    console.error("❌ getAth error:", err.message ?? err);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-// اجرای آنالیز
-fixedBalanceAnalysis().catch(console.error);
+// run directly:
+if (require.main === module) {
+  const addr = process.argv[2]; // optional: pass curve address as arg
+  getAth(addr);
+}
