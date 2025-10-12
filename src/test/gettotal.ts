@@ -20,7 +20,7 @@ interface MarketCapResult {
   tokenVolume: number;
 }
 
-let SOL_TO_USD = 217;
+let SOL_TO_USD = 217; 
 
 export async function updateSolPrice(): Promise<number> {
   try {
