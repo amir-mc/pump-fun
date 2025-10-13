@@ -8,7 +8,7 @@ async function getToken() {
   try {
     const token = await prisma.bondingCurveSignature.findMany({
       where: {
-        curveAddress: "A4mfqtbZQgbRrad9WtJQeRqkBZG3gVjiUApag9ysWByJ"
+        curveAddress: "EEyKhvRcwXKU2SQVimCNJYxKVtw1GXJZTprpfSQqNhue"
       }
     })
     

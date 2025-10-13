@@ -6,30 +6,19 @@
 import { clusterApiUrl, Connection, PublicKey } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 import { PrismaClient } from "../generated/prisma";
-
-const LAMPORTS_PER_SOL = 1_000_000_000n;
-const TOKEN_DECIMALS = 6n; // اگر توکن دیگری است، این را تغییر بده
+import { BondingCurveStateProps } from "../curve/get_bonding_curve_status";
 
 
 dotenv.config();
 
 const RPC_ENDPOINT = process.env.SOLANA_NODE_RPC_ENDPOINT || "https://api.mainnet-beta.solana.com";
 const prisma = new PrismaClient();
+const TOKEN_DECIMALS = 9;
 
 // استفاده از آدرس واقعی Pump program
 const PUMP_PROGRAM_ID = new PublicKey("A4mfqtbZQgbRrad9WtJQeRqkBZG3gVjiUApag9ysWByJ");
 const EXPECTED_DISCRIMINATOR = Buffer.alloc(8);
 EXPECTED_DISCRIMINATOR.writeBigUInt64LE(6966180631402821399n, 0);
-
-export interface BondingCurveStateProps {
-  virtual_token_reserves: bigint;
-  virtual_sol_reserves: bigint;
-  real_token_reserves: bigint;
-  real_sol_reserves: bigint;
-  token_total_supply: bigint;
-  complete: boolean;
-  creator?: PublicKey;
-}
 
 class BondingCurveState {
   virtual_token_reserves: bigint;
@@ -103,113 +92,63 @@ export async function getBondingCurveState(
 }
 
 /**
- * Get recent signatures for an address and save to database
+ * Get and save signatures for curve - دقیقاً مطابق کد اصلی
  */
-/**
- * Get and save only BUY transactions (from bonding curve → user wallets)
- * - فقط وقتی curve توکن فرستاده (یعنی کاربر خریده)
- * - تراکنش‌هایی با error ذخیره نمی‌شوند
- */
-async function getAndSaveSignatures(
-  conn: Connection,
-  curveAddress: PublicKey,
-  curveState: BondingCurveState
-) {
-  const TOKEN_DECIMALS = 9; // برای بیشتر توکن‌های سولانا
-const LAMPORTS_PER_SOL = 1000000000; // 1e9
-
-// یا اگر از @solana/web3.js استفاده می‌کنید:
+async function getAndSaveSignaturesForCurve(
+  curveAddress: string,
+  curveState: BondingCurveStateProps
+): Promise<void> {
+  const connection = new Connection(RPC_ENDPOINT, "confirmed");
+  const curvePubKey = new PublicKey(curveAddress);
 
   try {
-    const signatures = await conn.getSignaturesForAddress(curveAddress, { limit: 50 });
-    console.log(`📝 Found ${signatures.length} signatures for bonding curve`);
-
-    const curveBase58 = curveAddress.toBase58();
+    const signatures = await connection.getSignaturesForAddress(curvePubKey, { limit: 50 });
+    console.log(`📝 Found ${signatures.length} signatures for curve ${curveAddress}`);
 
     for (const sig of signatures) {
       try {
         if (sig.err) {
-          console.log(`⚠️ Skipping errored transaction: ${sig.signature}`);
+          console.log(`⚠️ Skipping errored tx: ${sig.signature}`);
           continue;
         }
 
-        const tx = await conn.getTransaction(sig.signature, {
+        const tx = await connection.getTransaction(sig.signature, {
           commitment: "confirmed",
           maxSupportedTransactionVersion: 0,
         });
 
-        if (!tx || !tx.meta || !tx.transaction) continue;
+        if (!tx?.meta || !tx.transaction) continue;
 
-        const accountKeys = tx.transaction.message.getAccountKeys().staticAccountKeys.map(
-          (key: PublicKey) => key.toBase58()
-        );
-        
-        // پیدا کردن ایندکس bonding curve در لیست حساب‌ها
-        const curveIndex = accountKeys.indexOf(curveBase58);
-        if (curveIndex === -1) {
-          console.log(`❌ Curve address not found in transaction accounts: ${sig.signature}`);
-          continue;
-        }
+        const preTokenBalances = tx.meta?.preTokenBalances ?? [];
+        const postTokenBalances = tx.meta?.postTokenBalances ?? [];
 
-        const preBalances = tx.meta.preBalances || [];
-        const postBalances = tx.meta.postBalances || [];
+        // نمایش مقادیر خام برای بررسی
+        //console.log("PRE amounts:", preTokenBalances.map(b => b.uiTokenAmount.amount));
+        //console.log("POST amounts:", postTokenBalances.map(b => b.uiTokenAmount.amount));
 
-        const curvePreBalance = BigInt(preBalances[curveIndex] || 0);
-        const curvePostBalance = BigInt(postBalances[curveIndex] || 0);
-        const solChange = curvePostBalance - curvePreBalance;
-        console.log(`💰 Curve Balance - Pre: ${curvePreBalance}, Post: ${curvePostBalance}, Change: ${solChange}`);
+        // فیلتر فقط آدرس‌های مرتبط با curveAddress
+        const pre = preTokenBalances.find(b => b.owner === curveAddress);
+        const post = postTokenBalances.find(b => b.owner === curveAddress);
+        if (!pre || !post) continue;
 
-        // بررسی تغییرات توکن (خرید)
-        const preTokenBalances = tx.meta.preTokenBalances || [];
-        const postTokenBalances = tx.meta.postTokenBalances || [];
+        const preAmount = BigInt(pre.uiTokenAmount.amount);
+        const postAmount = BigInt(post.uiTokenAmount.amount);
 
-        const curveTokenBefore = preTokenBalances.find(b => b.owner === curveBase58);
-        const curveTokenAfter = postTokenBalances.find(b => b.owner === curveBase58);
+        // اختلاف مقدار توکن
+        const diff = postAmount - preAmount;
 
-        if (!curveTokenBefore || !curveTokenAfter) {
-          console.log(`❌ Token balances not found for curve: ${sig.signature}`);
-          continue;
-        }
+        // نادیده گرفتن تراکنش‌های بی‌معنی مثل مقدار 1
+        if (diff === 1n || diff === 0n) continue;
 
-        const beforeAmount = BigInt(curveTokenBefore.uiTokenAmount.amount);
-        const afterAmount = BigInt(curveTokenAfter.uiTokenAmount.amount);
-        
-        // 🔴 اصلاح: محاسبه مقدار واقعی توکن‌های ارسال شده
-        const tokenSentOut = beforeAmount - afterAmount;
-        
-        // اگر توکن از curve خارج شده (خرید اتفاق افتاده)
-        if (tokenSentOut <= 0n) {
-          console.log(`❌ Not a BUY transaction (tokens not sent out): ${sig.signature}, tokenSentOut: ${tokenSentOut}`);
-          continue;
-        }
-
-        console.log(`🎯 Token Change - Before: ${beforeAmount}, After: ${afterAmount}, Sent Out: ${tokenSentOut}`);
-
-        // محاسبه قیمت
-       const tokenAmountInStandard = Number(tokenSentOut) / Math.pow(10, TOKEN_DECIMALS);
-const solAmountInStandard = Number(solChange) / LAMPORTS_PER_SOL;
-
-const priceSol = solAmountInStandard / tokenAmountInStandard;
-const priceLamportsPerToken = BigInt(Math.floor(priceSol * LAMPORTS_PER_SOL));
-
-        console.log(`🟢 BUY Detected: ${sig.signature}`);
-        console.log(`   SOL Change: ${solChange} lamports`);
-        console.log(`   Token Sent Out: ${tokenSentOut}`);
-        console.log(`   Price: ${priceSol} SOL per token`);
-
+        // ذخیره در پایگاه داده
         await prisma.bondingCurveSignature.upsert({
           where: { signature: sig.signature },
           update: {
-            slot: sig.slot,
             blockTime: sig.blockTime,
             confirmationStatus: sig.confirmationStatus || "finalized",
-            memo: sig.memo || null,
-            preBalances: curvePreBalance,
-            postBalances: curvePostBalance,
-            tokenSentOut: tokenSentOut,
-            priceLamports: priceLamportsPerToken,
-            priceSol: priceSol.toString(),
-            // اضافه کردن فیلدهای reserves به بخش update
+            preTokenAmount: preAmount,
+            postTokenAmount: postAmount,
+            tokenDiff: diff,
             virtualTokenReserves: curveState.virtual_token_reserves,
             virtualSolReserves: curveState.virtual_sol_reserves,
             realTokenReserves: curveState.real_token_reserves,
@@ -220,12 +159,13 @@ const priceLamportsPerToken = BigInt(Math.floor(priceSol * LAMPORTS_PER_SOL));
           },
           create: {
             signature: sig.signature,
-            curveAddress: curveBase58,
+            curveAddress,
             slot: sig.slot,
             blockTime: sig.blockTime,
             confirmationStatus: sig.confirmationStatus || "finalized",
-            error: null,
-            memo: sig.memo || null,
+            preTokenAmount: preAmount,
+            postTokenAmount: postAmount,
+            tokenDiff: diff,
             virtualTokenReserves: curveState.virtual_token_reserves,
             virtualSolReserves: curveState.virtual_sol_reserves,
             realTokenReserves: curveState.real_token_reserves,
@@ -233,32 +173,29 @@ const priceLamportsPerToken = BigInt(Math.floor(priceSol * LAMPORTS_PER_SOL));
             tokenTotalSupply: curveState.token_total_supply,
             complete: curveState.complete,
             creator: curveState.creator?.toBase58() || null,
-            preBalances: curvePreBalance,
-            postBalances: curvePostBalance,
-            tokenSentOut: tokenSentOut,
-            priceLamports: priceLamportsPerToken,
-            priceSol: priceSol.toString(),
           },
         });
 
-        console.log(`💾 Saved transaction: ${sig.signature}`);
-
-      } catch (txError) {
-        console.error(`⚠️ Error processing transaction ${sig.signature}:`, txError);
+        console.log(`💾 Saved Token Change: ${sig.signature} → Δ ${diff}`);
+      } catch (txErr) {
+        console.error(`⚠️ Error processing tx ${sig.signature}:`, txErr);
       }
     }
 
-    console.log(`💾 Saved BUY transactions successfully`);
+    console.log(`✅ All token changes for curve ${curveAddress} processed.`);
   } catch (error: any) {
     console.error(`❌ Error fetching/saving signatures: ${error.message}`);
+  } finally {
+    await prisma.$disconnect();
   }
 }
-
 
 /**
  * Calculate price from bonding curve state
  */
 export function calculateBondingCurvePrice(curveState: BondingCurveState): number {
+  const LAMPORTS_PER_SOL = 1_000_000_000n;
+  
   if (
     curveState.virtual_token_reserves <= 0n ||
     curveState.virtual_sol_reserves <= 0n
@@ -277,6 +214,8 @@ export function calculateBondingCurvePrice(curveState: BondingCurveState): numbe
  * Display bonding curve state in readable format
  */
 function displayBondingCurveState(curveState: BondingCurveState, tokenPriceSol: number): void {
+  const LAMPORTS_PER_SOL = 1_000_000_000n;
+  
   console.log("\n🎯 BONDING CURVE STATE ANALYSIS");
   console.log("=================================");
   
@@ -321,7 +260,7 @@ async function testBondingCurve() {
     const connection = new Connection(endpoint, "confirmed");
 
     // آدرس bonding curve برای تست
-    const TEST_BONDING_CURVE_ADDRESS = "A4mfqtbZQgbRrad9WtJQeRqkBZG3gVjiUApag9ysWByJ";
+    const TEST_BONDING_CURVE_ADDRESS = "7LF2VDUfbScxcKywLeHo43g35CySpWGRR42NU97s4onW";
     
     console.log(`🔍 Testing bonding curve address: ${TEST_BONDING_CURVE_ADDRESS}`);
     console.log(`🌐 RPC Endpoint: ${endpoint}`);
@@ -334,8 +273,19 @@ async function testBondingCurve() {
     // نمایش کامل اطلاعات
     displayBondingCurveState(bondingCurveState, tokenPriceSol);
 
-    // دریافت و ذخیره signatures
-    await getAndSaveSignatures(connection, curveAddress, bondingCurveState);
+    // تبدیل به BondingCurveStateProps برای استفاده در تابع اصلی
+    const curveStateProps: BondingCurveStateProps = {
+      virtual_token_reserves: bondingCurveState.virtual_token_reserves,
+      virtual_sol_reserves: bondingCurveState.virtual_sol_reserves,
+      real_token_reserves: bondingCurveState.real_token_reserves,
+      real_sol_reserves: bondingCurveState.real_sol_reserves,
+      token_total_supply: bondingCurveState.token_total_supply,
+      complete: bondingCurveState.complete,
+      creator: bondingCurveState.creator
+    };
+
+    // دریافت و ذخیره signatures با استفاده از تابع اصلی
+    await getAndSaveSignaturesForCurve(TEST_BONDING_CURVE_ADDRESS, curveStateProps);
 
   } catch (error: any) {
     console.error(`💥 Error in test: ${error.message}`);
