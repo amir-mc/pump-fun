@@ -1,0 +1,20 @@
+[
+  {
+    "curveAddress": "ELxGN4P9bf14FqNrNjvDEUuBncFs2y4jG4f1nZqxE6Gn",
+    "athSOL": 90.42129581469212,
+    "athUSD": 17578.804119334294,
+    "athTimestamp": "2025-10-14T07:10:46.988Z",
+    "currentMarketCapSOL": 40.64134395476712,
+    "currentMarketCapUSD": 7901.083678246277,
+    "percentageFromATH": -55.05334933702255
+  },
+  {
+    "curveAddress": "pztfcvhCdyKwe9amAvd32fdo1E9gKMPw39m6yjaFYno",
+    "athSOL": 80.70583534622465,
+    "athUSD": 15690.021449659533,
+    "athTimestamp": "2025-10-14T07:53:00.872Z",
+    "currentMarketCapSOL": 80.70583534622465,
+    "currentMarketCapUSD": 15690.021449659533,
+    "percentageFromATH": 0
+  }
+]

@@ -90,7 +90,6 @@ export async function getAndSaveSignaturesForCurve(
             creator: curveState.creator?.toBase58() || null,
           },
         });
-
         console.log(`💾 Saved Token Change: ${sig.signature} → Δ ${diff}`);
       } catch (txErr) {
         console.error(`⚠️ Error processing tx ${sig.signature}:`, txErr);

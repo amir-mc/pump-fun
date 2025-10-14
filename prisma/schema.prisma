@@ -58,4 +58,29 @@ model BondingCurveSignature {
 
   token Token? @relation("TokenSignatures", fields: [curveAddress], references: [bondingCurve])
 }
+model BondingCurveSignatureTest {
+  id                  Int      @id @default(autoincrement())
+  signature           String   @unique
+  curveAddress        String
+  slot                BigInt
+  blockTime           Int?
+  confirmationStatus  String
+  error               String?
+  memo                String?
+  virtualTokenReserves BigInt
+  virtualSolReserves  BigInt
+  realTokenReserves   BigInt
+  realSolReserves     BigInt
+  tokenTotalSupply    BigInt
+  complete            Boolean
+  creator             String?
+  preTokenAmount      BigInt?
+  postTokenAmount     BigInt?
+  tokenDiff           BigInt?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // هیچ relation دیگری وجود ندارد - مستقل است
+}
 

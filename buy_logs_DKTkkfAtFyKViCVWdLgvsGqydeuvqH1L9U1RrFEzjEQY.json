@@ -1,0 +1,86 @@
+[
+  {
+    "signature": "2DuWDTNe9a6ktQgGV3rLZ3AcQnspUMmtRCjfbroEvTA7TZuAunEcUPtbgQiCWWiPuDV6Y3AsVu7d74qGmNfDjNtw",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "4971297308344",
+    "tokenAmount": 4971.297308344,
+    "solAmount": 0.07742503859748577,
+    "usdAmount": 15.493524473742879,
+    "timestamp": "2025-10-14T05:50:23.047Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  },
+  {
+    "signature": "3TqAL8erv6Zyr2DcJzmwgK6LjDH3v2rMt28WcPquu7ixJ9B9bu6tEtB16Q8xmYHwLSKs6TEFBMeGWWKa743aQYzZ",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "1985550145",
+    "tokenAmount": 1.985550145,
+    "solAmount": 0.00003092377845835944,
+    "usdAmount": 0.006188157307302308,
+    "timestamp": "2025-10-14T05:50:23.268Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  },
+  {
+    "signature": "5ZZXJM99LxEnhdMbaUHgtj8WaiFFmjfdGU58tZR7hVihDoXDj38zu3GoDdJt14h66uCLxuWhuLvkbHsUkccCupC6",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "268971905698695",
+    "tokenAmount": 268971.905698695,
+    "solAmount": 4.189079608135101,
+    "usdAmount": 838.2767203839151,
+    "timestamp": "2025-10-14T05:50:23.490Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  },
+  {
+    "signature": "4G5u2m4LEbqzKaLhnryzwp5XF4fuaJYQZCf1GocwfJb1ndfHJSUK1teMM6RCYBrgYkVkhfQGbUwkK1jHYmo95ybJ",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "1874930565",
+    "tokenAmount": 1.874930565,
+    "solAmount": 0.00002920094340748403,
+    "usdAmount": 0.005843400785271629,
+    "timestamp": "2025-10-14T05:50:23.709Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  },
+  {
+    "signature": "2L35PQfkppKKHAVxB7QQ3vYKdp9dXEHhmnqcZtmpMwTPLGdcAP16dxHw9tgm8KCoRrQJ7yiHKD4QvpXG422yMpe4",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "202568433",
+    "tokenAmount": 0.202568433,
+    "solAmount": 0.0000031548844840425974,
+    "usdAmount": 0.0006313239341017642,
+    "timestamp": "2025-10-14T05:50:24.930Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  },
+  {
+    "signature": "2Gi4PWMZoJHYrfKDn2do11WrSCDsiTNFXM7rZ6xAmWDK2AfoJVqbkeE2BKg3EcZgUvnygcQNyGWrg86Tuh1gTmFj",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "1592073042125",
+    "tokenAmount": 1592.073042125,
+    "solAmount": 0.02479560345941294,
+    "usdAmount": 4.961848208263124,
+    "timestamp": "2025-10-14T05:50:25.252Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  },
+  {
+    "signature": "218FAaLjPCDLbvefCXHavSvjLUJ5wf2txEyGiNTJhFZP3UXpCYZihTArokj4zpyHKXg9jQ98d93SspntM7sJtkUL",
+    "curveAddress": "DKTkkfAtFyKViCVWdLgvsGqydeuvqH1L9U1RrFEzjEQY",
+    "transactionType": "BUY",
+    "tokenDiff": "3827182328541",
+    "tokenAmount": 3827.182328541,
+    "solAmount": 0.05960611911292229,
+    "usdAmount": 11.92778049568688,
+    "timestamp": "2025-10-14T05:50:25.636Z",
+    "realSolReservesBefore": "8621562679",
+    "realSolReservesAfter": "8621562679"
+  }
+]

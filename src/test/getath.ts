@@ -1,121 +1,159 @@
-// getAth.ts
+// getath.ts
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { PrismaClient } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
-const LAMPORTS_PER_SOL = 1_000_000_000n;
-const TOKEN_DECIMALS = 6n;
+let SOL_TO_USD = 172;
 
-function lamportsToSol(l: bigint) {
-  return Number(l) / Number(LAMPORTS_PER_SOL);
-}
-
-export async function getAth(curveAddress?: string) {
+async function updateSolPrice(): Promise<number> {
   try {
-    const where = curveAddress ? { curveAddress } : {};
-    const rows = await prisma.bondingCurveSignature.findMany({
-      where,
-      orderBy: { blockTime: "asc" },
-      // select fields that might exist:
-      select: {
-        id: true,
-        signature: true,
-        blockTime: true,
-        preBalances: true,
-        postBalances: true,
-        virtualSolReserves: true,
-        virtualTokenReserves: true,
-        realSolReserves: true,
-        // اگر فیلدهای جدید را اضافه کردی:
-        // tokenSentOut: true,
-        // priceLamports: true,
-        // priceSol: true,
-      } as any,
-    });
-
-    if (!rows || rows.length === 0) {
-      console.log("⚠️ No rows found.");
-      return;
-    }
-
-    type RowPrice = {
-      signature: string;
-      blockTime: number | null;
-      priceSol: number;
-      method: string;
-    };
-
-    const priceList: RowPrice[] = [];
-
-    for (const r of rows) {
-      // 1) اگر priceLamports/priceSol رو در DB ذخیره کردی از اون استفاده کن (اولویت)
-      // (در این select فعلاً این فیلد نیست؛ اگر اضافه کردی، اول اون رو بررسی کن)
-
-      // 2) اگر tokenSentOut موجود باشه (و pre/post ذخیره شده باشه) => محاسبه‌ی price از تراکنش
-      try {
-        const pre = (r.preBalances !== null && r.preBalances !== undefined) ? BigInt(r.preBalances) : null;
-        const post = (r.postBalances !== null && r.postBalances !== undefined) ? BigInt(r.postBalances) : null;
-
-        if (pre !== null && post !== null) {
-          // فرض: pre/post مربوط به curve account هستند (از getAndSaveSignatures اصلاح‌شده)
-          const solDiff = post - pre; // lamports
-          // اما ما نیاز به tokenSentOut داریم؛ اگر در DB ذخیره‌شده از آن استفاده کن. 
-          // در غیر اینصورت fallback به استفاده از virtual reserves برای تخمین قیمت:
-          // -> برای حالا: اگر tokenSentOut نداریم، از virtual reserves استفاده می‌کنیم.
-        }
-
-        // fallback: use virtual reserves if present
-        if (r.virtualSolReserves && r.virtualTokenReserves) {
-          const vs = BigInt(r.virtualSolReserves);
-          const vt = BigInt(r.virtualTokenReserves);
-
-          if (vs > 0n && vt > 0n) {
-            const virtualSol = Number(vs) / 1e9;
-            const virtualTokens = Number(vt) / Math.pow(10, Number(TOKEN_DECIMALS));
-            const priceSol = virtualSol / virtualTokens;
-            priceList.push({
-              signature: r.signature,
-              blockTime: r.blockTime,
-              priceSol,
-              method: "virtual-reserves-fallback",
-            });
-            continue;
-          }
-        }
-      } catch (e) {
-        // ignore row if can't compute
-      }
-    }
-
-    if (priceList.length === 0) {
-      console.log("⚠️ No computable prices found (add tokenSentOut/price to DB to compute exact swap prices).");
-      return;
-    }
-
-    // initial price = first available price
-    const initial = priceList[0];
-    let ath = priceList[0];
-    for (const p of priceList) {
-      if (p.priceSol > ath.priceSol) ath = p;
-    }
-
-    const percentGain = ((ath.priceSol - initial.priceSol) / initial.priceSol) * 100;
-    const athDate = ath.blockTime ? new Date(ath.blockTime * 1000).toLocaleString() : "unknown";
-
-    console.log("📈 ATH Results:");
-    console.log(`  Initial price (${initial.method}) = ${initial.priceSol} SOL`);
-    console.log(`  ATH price (${ath.method}) = ${ath.priceSol} SOL`);
-    console.log(`  Growth: +${percentGain.toFixed(2)}%`);
-    console.log(`  ATH time: ${athDate}`);
-  } catch (err: any) {
-    console.error("❌ getAth error:", err.message ?? err);
-  } finally {
-    await prisma.$disconnect();
+    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+    const data = await res.json();
+    if (data?.solana?.usd) SOL_TO_USD = data.solana.usd;
+    return SOL_TO_USD;
+  } catch (e) {
+    return SOL_TO_USD;
   }
 }
 
-// run directly:
+interface ATHRecord {
+  curveAddress: string;
+  athSOL: number;
+  athUSD: number;
+  athTimestamp: Date;
+  currentMarketCapSOL: number;
+  currentMarketCapUSD: number;
+  percentageFromATH: number;
+}
+
+async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
+  await updateSolPrice();
+
+  // پیدا کردن تمام curve addressهای منحصر به فرد
+  const allCurves = await prisma.bondingCurveSignatureTest.findMany({
+    select: { curveAddress: true },
+    distinct: ['curveAddress']
+  });
+
+  console.log(`🎯 Found ${allCurves.length} curve addresses`);
+
+  const athResults: ATHRecord[] = [];
+
+  for (const curve of allCurves) {
+    const curveAddress = curve.curveAddress;
+    
+    // گرفتن تمام رکوردهای این curve به ترتیب زمانی
+    const allRecords = await prisma.bondingCurveSignatureTest.findMany({
+      where: { curveAddress },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    if (allRecords.length === 0) continue;
+
+    let athSOL = 0;
+    let athUSD = 0;
+    let athTimestamp = new Date(0);
+
+    // محاسبه مارکت کپ برای هر نقطه در زمان
+    for (const record of allRecords) {
+      const virtualSol = Number(record.virtualSolReserves) / LAMPORTS_PER_SOL;
+      const virtualTokens = Number(record.virtualTokenReserves) / 1e9;
+      const totalSupply = Number(record.tokenTotalSupply) / 1e9;
+
+      if (virtualTokens > 0) {
+        const pricePerTokenSOL = virtualSol / virtualTokens;
+        const marketCapSOL = pricePerTokenSOL * totalSupply;
+        const marketCapUSD = marketCapSOL * SOL_TO_USD;
+
+        // بررسی آیا این ATH جدید است
+        if (marketCapUSD > athUSD) {
+          athSOL = marketCapSOL;
+          athUSD = marketCapUSD;
+          athTimestamp = record.createdAt;
+        }
+      }
+    }
+
+    // محاسبه مارکت کپ فعلی (آخرین رکورد)
+    const lastRecord = allRecords[allRecords.length - 1];
+    const currentVirtualSol = Number(lastRecord.virtualSolReserves) / LAMPORTS_PER_SOL;
+    const currentVirtualTokens = Number(lastRecord.virtualTokenReserves) / 1e9;
+    const currentTotalSupply = Number(lastRecord.tokenTotalSupply) / 1e9;
+
+    let currentMarketCapSOL = 0;
+    let currentMarketCapUSD = 0;
+
+    if (currentVirtualTokens > 0) {
+      const currentPriceSOL = currentVirtualSol / currentVirtualTokens;
+      currentMarketCapSOL = currentPriceSOL * currentTotalSupply;
+      currentMarketCapUSD = currentMarketCapSOL * SOL_TO_USD;
+    }
+
+    const percentageFromATH = athUSD > 0 ? ((currentMarketCapUSD - athUSD) / athUSD) * 100 : 0;
+
+    athResults.push({
+      curveAddress,
+      athSOL,
+      athUSD,
+      athTimestamp,
+      currentMarketCapSOL,
+      currentMarketCapUSD,
+      percentageFromATH
+    });
+
+    console.log(`\n📈 ${curveAddress}`);
+    console.log(`   ATH: $${athUSD.toLocaleString()} (${athSOL.toFixed(6)} SOL)`);
+    console.log(`   ATH Date: ${athTimestamp.toLocaleString()}`);
+    console.log(`   Current: $${currentMarketCapUSD.toLocaleString()} (${currentMarketCapSOL.toFixed(6)} SOL)`);
+    console.log(`   From ATH: ${percentageFromATH.toFixed(2)}%`);
+  }
+
+  // مرتب‌سازی بر اساس ATH
+  athResults.sort((a, b) => b.athUSD - a.athUSD);
+
+  return athResults;
+}
+
+// ذخیره نتایج در فایل
+function saveATHToFile(athResults: ATHRecord[]): void {
+  const fs = require('fs');
+  const path = require('path');
+  
+  const data = athResults.map(result => ({
+    ...result,
+    athTimestamp: result.athTimestamp.toISOString()
+  }));
+
+  const filePath = path.join(process.cwd(), 'ath_results.json');
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  console.log(`\n💾 ATH results saved to: ${filePath}`);
+}
+
+// اجرای اصلی
+async function main() {
+  console.log("🚀 Calculating ATH for all curves...");
+  
+  const athResults = await calculateATHForAllCurves();
+  
+  console.log(`\n🎉 ATH Calculation Completed!`);
+  console.log(`📊 Total curves analyzed: ${athResults.length}`);
+  
+  // نمایش 10 تاکن برتر بر اساس ATH
+  console.log(`\n🏆 TOP 10 BY ATH:`);
+  athResults.slice(0, 10).forEach((result, index) => {
+    console.log(`${index + 1}. ${result.curveAddress}`);
+    console.log(`   ATH: $${result.athUSD.toLocaleString()}`);
+    console.log(`   Current: $${result.currentMarketCapUSD.toLocaleString()}`);
+    console.log(`   Date: ${result.athTimestamp.toLocaleDateString()}`);
+    console.log(`   Change: ${result.percentageFromATH.toFixed(2)}%`);
+    console.log('');
+  });
+
+  saveATHToFile(athResults);
+  await prisma.$disconnect();
+}
+
 if (require.main === module) {
-  const addr = process.argv[2]; // optional: pass curve address as arg
-  getAth(addr);
+  main().catch(console.error);
 }
