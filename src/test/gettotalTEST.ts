@@ -1,4 +1,4 @@
-// accurate_calc.ts
+// gettotalTEST.ts
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { PrismaClient } from "../generated/prisma";
 
