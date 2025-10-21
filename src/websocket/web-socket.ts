@@ -23,11 +23,110 @@ async function updateSolPrice(): Promise<number> {
   }
 }
 
-// تابع برای محاسبه ATH (بر اساس کد getath.ts)
+// تابع برای محاسبه قیمت از فرمول واقعی (مطابق کلاس شما)
+function calculateBondingCurvePrice(virtualSolReserves: bigint, virtualTokenReserves: bigint): number {
+  const LAMPORTS_PER_SOL = 1_000_000_000n;
+  const TOKEN_DECIMALS = 6; // از کلاس شما
+  
+  if (virtualTokenReserves <= 0n || virtualSolReserves <= 0n) {
+    return 0;
+  }
+
+  const sol = Number(virtualSolReserves) / Number(LAMPORTS_PER_SOL);
+  const tokens = Number(virtualTokenReserves) / 10 ** TOKEN_DECIMALS;
+
+  return sol / tokens;
+}
+
+// تابع برای محاسبه مارکت کپ
+function calculateMarketCap(virtualSolReserves: bigint, virtualTokenReserves: bigint, tokenTotalSupply: bigint): {
+  priceSOL: number;
+  marketCapSOL: number;
+  marketCapUSD: number;
+} {
+  const TOKEN_DECIMALS = 6;
+  const priceSOL = calculateBondingCurvePrice(virtualSolReserves, virtualTokenReserves);
+  const totalSupply = Number(tokenTotalSupply) / 10 ** TOKEN_DECIMALS;
+  const marketCapSOL = priceSOL * totalSupply;
+  const marketCapUSD = marketCapSOL * SOL_TO_USD;
+
+  return { priceSOL, marketCapSOL, marketCapUSD };
+}
+
+// تابع برای ایجاد تاریخچه قیمت از داده‌های واقعی
+async function createPriceHistory(curveAddress: string): Promise<any[]> {
+  // گرفتن تمام رکوردها به ترتیب زمانی
+  const allRecords = await prisma.bondingCurveSignatureTest.findMany({
+    where: { curveAddress },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (allRecords.length === 0) return [];
+
+  const priceHistory = [];
+  
+  // پیدا کردن قیمت لانچ (اولین رکورد)
+  const launchRecord = allRecords[0];
+  const launchPriceData = calculateMarketCap(
+    launchRecord.virtualSolReserves,
+    launchRecord.virtualTokenReserves,
+    launchRecord.tokenTotalSupply
+  );
+
+  // اضافه کردن نقطه لانچ
+  priceHistory.push({
+    x: launchRecord.createdAt.getTime(),
+    y: launchPriceData.priceSOL,
+    marketCapUSD: launchPriceData.marketCapUSD,
+    type: 'launch',
+    label: 'Launch Price'
+  });
+
+  // اضافه کردن نقاط مهم دیگر (هر 10 رکورد یک نقطه)
+  const step = Math.max(1, Math.floor(allRecords.length / 20));
+  for (let i = 1; i < allRecords.length; i += step) {
+    const record = allRecords[i];
+    const priceData = calculateMarketCap(
+      record.virtualSolReserves,
+      record.virtualTokenReserves,
+      record.tokenTotalSupply
+    );
+
+    priceHistory.push({
+      x: record.createdAt.getTime(),
+      y: priceData.priceSOL,
+      marketCapUSD: priceData.marketCapUSD,
+      type: 'history'
+    });
+  }
+
+  // اضافه کردن آخرین نقطه
+  const lastRecord = allRecords[allRecords.length - 1];
+  const lastPriceData = calculateMarketCap(
+    lastRecord.virtualSolReserves,
+    lastRecord.virtualTokenReserves,
+    lastRecord.tokenTotalSupply
+  );
+
+  priceHistory.push({
+    x: lastRecord.createdAt.getTime(),
+    y: lastPriceData.priceSOL,
+    marketCapUSD: lastPriceData.marketCapUSD,
+    type: 'current'
+  });
+
+  // مرتب‌سازی بر اساس زمان
+  return priceHistory.sort((a, b) => a.x - b.x);
+}
+
+// تابع برای محاسبه ATH
 async function calculateATHForCurve(curveAddress: string): Promise<{
   athSOL: number;
   athUSD: number;
   athTimestamp: Date;
+  launchPriceSOL: number;
+  launchPriceUSD: number;
+  launchTimestamp: Date;
   currentMarketCapSOL: number;
   currentMarketCapUSD: number;
   percentageFromATH: number;
@@ -36,7 +135,7 @@ async function calculateATHForCurve(curveAddress: string): Promise<{
 }> {
   await updateSolPrice();
 
-  // گرفتن تمام رکوردهای این curve به ترتیب زمانی
+  // گرفتن تمام رکوردها
   const allRecords = await prisma.bondingCurveSignatureTest.findMany({
     where: { curveAddress },
     orderBy: { createdAt: 'asc' }
@@ -52,39 +151,42 @@ async function calculateATHForCurve(curveAddress: string): Promise<{
 
   // محاسبه ATH از تاریخچه
   for (const record of allRecords) {
-    const virtualSol = Number(record.virtualSolReserves) / LAMPORTS_PER_SOL;
-    const virtualTokens = Number(record.virtualTokenReserves) / 1e9;
-    const totalSupply = Number(record.tokenTotalSupply) / 1e9;
+    const { priceSOL, marketCapSOL, marketCapUSD } = calculateMarketCap(
+      record.virtualSolReserves,
+      record.virtualTokenReserves,
+      record.tokenTotalSupply
+    );
 
-    if (virtualTokens > 0) {
-      const pricePerTokenSOL = virtualSol / virtualTokens;
-      const marketCapSOL = pricePerTokenSOL * totalSupply;
-      const marketCapUSD = marketCapSOL * SOL_TO_USD;
-
-      // بررسی آیا این ATH جدید است
-      if (marketCapUSD > athUSD) {
-        athSOL = marketCapSOL;
-        athUSD = marketCapUSD;
-        athTimestamp = record.createdAt;
-      }
+    // بررسی آیا این ATH جدید است
+    if (marketCapUSD > athUSD) {
+      athSOL = marketCapSOL;
+      athUSD = marketCapUSD;
+      athTimestamp = record.createdAt;
     }
   }
 
+  // محاسبه قیمت لانچ
+  const launchRecord = allRecords[0];
+  const { 
+    priceSOL: launchPriceSOL, 
+    marketCapUSD: launchPriceUSD 
+  } = calculateMarketCap(
+    launchRecord.virtualSolReserves,
+    launchRecord.virtualTokenReserves,
+    launchRecord.tokenTotalSupply
+  );
+
   // محاسبه مقادیر فعلی (آخرین رکورد)
   const lastRecord = allRecords[allRecords.length - 1];
-  const currentVirtualSol = Number(lastRecord.virtualSolReserves) / LAMPORTS_PER_SOL;
-  const currentVirtualTokens = Number(lastRecord.virtualTokenReserves) / 1e9;
-  const currentTotalSupply = Number(lastRecord.tokenTotalSupply) / 1e9;
-
-  let currentPriceSOL = 0;
-  let currentMarketCapSOL = 0;
-  let currentMarketCapUSD = 0;
-
-  if (currentVirtualTokens > 0) {
-    currentPriceSOL = currentVirtualSol / currentVirtualTokens;
-    currentMarketCapSOL = currentPriceSOL * currentTotalSupply;
-    currentMarketCapUSD = currentMarketCapSOL * SOL_TO_USD;
-  }
+  const { 
+    priceSOL: currentPriceSOL, 
+    marketCapSOL: currentMarketCapSOL, 
+    marketCapUSD: currentMarketCapUSD 
+  } = calculateMarketCap(
+    lastRecord.virtualSolReserves,
+    lastRecord.virtualTokenReserves,
+    lastRecord.tokenTotalSupply
+  );
 
   const currentPriceUSD = currentPriceSOL * SOL_TO_USD;
   const percentageFromATH = athUSD > 0 ? ((currentMarketCapUSD - athUSD) / athUSD) * 100 : 0;
@@ -93,6 +195,9 @@ async function calculateATHForCurve(curveAddress: string): Promise<{
     athSOL,
     athUSD,
     athTimestamp,
+    launchPriceSOL,
+    launchPriceUSD,
+    launchTimestamp: launchRecord.createdAt,
     currentMarketCapSOL,
     currentMarketCapUSD,
     percentageFromATH,
@@ -101,7 +206,7 @@ async function calculateATHForCurve(curveAddress: string): Promise<{
   };
 }
 
-// تابع برای گرفتن اطلاعات کامل curve
+// تابع اصلی برای گرفتن اطلاعات کامل curve
 async function getCompleteCurveData(curveAddress: string) {
   const latestRecord = await prisma.bondingCurveSignatureTest.findFirst({
     where: { curveAddress },
@@ -115,12 +220,16 @@ async function getCompleteCurveData(curveAddress: string) {
   // محاسبه ATH و اطلاعات فعلی
   const athData = await calculateATHForCurve(curveAddress);
 
-  // محاسبه مقادیر خوانا
-  const virtualTokens = Number(latestRecord.virtualTokenReserves) / 1e9;
-  const virtualSol = Number(latestRecord.virtualSolReserves) / LAMPORTS_PER_SOL;
-  const realTokens = Number(latestRecord.realTokenReserves) / 1e9;
-  const realSol = Number(latestRecord.realSolReserves) / LAMPORTS_PER_SOL;
-  const totalSupply = Number(latestRecord.tokenTotalSupply) / 1e9;
+  // ایجاد تاریخچه قیمت
+  const priceHistory = await createPriceHistory(curveAddress);
+
+  // محاسبه مقادیر خوانا از آخرین رکورد
+  const TOKEN_DECIMALS = 6;
+  const virtualTokens = Number(latestRecord.virtualTokenReserves) / 10 ** TOKEN_DECIMALS;
+  const virtualSol = Number(latestRecord.virtualSolReserves) / Number(LAMPORTS_PER_SOL);
+  const realTokens = Number(latestRecord.realTokenReserves) / 10 ** TOKEN_DECIMALS;
+  const realSol = Number(latestRecord.realSolReserves) / Number(LAMPORTS_PER_SOL);
+  const totalSupply = Number(latestRecord.tokenTotalSupply) / 10 ** TOKEN_DECIMALS;
 
   return {
     // اطلاعات پایه
@@ -140,11 +249,19 @@ async function getCompleteCurveData(curveAddress: string) {
     currentMarketCapSOL: athData.currentMarketCapSOL,
     currentMarketCapUSD: athData.currentMarketCapUSD,
 
+    // اطلاعات لانچ
+    launchPriceSOL: athData.launchPriceSOL,
+    launchPriceUSD: athData.launchPriceUSD,
+    launchTimestamp: athData.launchTimestamp,
+
     // اطلاعات ATH
     athSOL: athData.athSOL,
     athUSD: athData.athUSD,
     athTimestamp: athData.athTimestamp,
     percentageFromATH: athData.percentageFromATH,
+
+    // داده‌های چارت
+    priceHistory,
 
     // اطلاعات اضافی
     solPrice: SOL_TO_USD,
@@ -179,11 +296,10 @@ wss.on('connection', (ws) => {
       if (data.type === 'GET_ALL_CURVES') {
         console.log('📊 Processing all curves data request');
         
-        // پیدا کردن تمام curve addressهای منحصر به فرد
         const allCurves = await prisma.bondingCurveSignatureTest.findMany({
           select: { curveAddress: true },
           distinct: ['curveAddress'],
-          take: 50 // محدودیت برای جلوگیری از overload
+          take: 50
         });
 
         const allCurvesData = [];
@@ -197,7 +313,6 @@ wss.on('connection', (ws) => {
           }
         }
 
-        // مرتب‌سازی بر اساس مارکت کپ
         allCurvesData.sort((a, b) => b.currentMarketCapUSD - a.currentMarketCapUSD);
 
         ws.send(JSON.stringify({
@@ -208,45 +323,6 @@ wss.on('connection', (ws) => {
         }));
 
         console.log(`✅ Sent data for ${allCurvesData.length} curves`);
-      }
-
-      // درخواست برای top curves بر اساس ATH
-      if (data.type === 'GET_TOP_ATH') {
-        const limit = data.limit || 10;
-        
-        console.log(`🏆 Processing top ${limit} ATH curves request`);
-
-        const allCurves = await prisma.bondingCurveSignatureTest.findMany({
-          select: { curveAddress: true },
-          distinct: ['curveAddress'],
-          take: 100
-        });
-
-        const allCurvesData = [];
-
-        for (const curve of allCurves) {
-          try {
-            const curveData = await getCompleteCurveData(curve.curveAddress);
-            allCurvesData.push(curveData);
-          } catch (error:any) {
-            console.log(`⚠️ Skipping curve ${curve.curveAddress}:`, error.message);
-          }
-        }
-
-        // مرتب‌سازی بر اساس ATH
-        const topATH = allCurvesData
-          .filter(curve => curve.athUSD > 0)
-          .sort((a, b) => b.athUSD - a.athUSD)
-          .slice(0, limit);
-
-        ws.send(JSON.stringify({
-          type: 'TOP_ATH_DATA',
-          data: topATH,
-          count: topATH.length,
-          timestamp: new Date().toISOString()
-        }));
-
-        console.log(`✅ Sent top ${topATH.length} ATH curves`);
       }
 
     } catch (error:any) {
