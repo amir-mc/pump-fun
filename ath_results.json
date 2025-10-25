@@ -1,29 +1,29 @@
 [
   {
-    "curveAddress": "Ar6k7VnU4NAyY6Ph38ZF152kqQ4LhqF1tXQq56PFVxc4",
-    "athSOL": 108.90767101286207,
-    "athUSD": 19499.918494852955,
-    "athTimestamp": "2025-10-17T15:05:29.032Z",
-    "currentMarketCapSOL": 108.90767101286207,
-    "currentMarketCapUSD": 19499.918494852955,
-    "percentageFromATH": 0
+    "curveAddress": "Gj2hc86Bz1hoGKmrQtGqf9TebTkWnTk4bzk7rHJ5J3Vf",
+    "athSOL": 278.57590153603064,
+    "athUSD": 47915.05506419727,
+    "athTimestamp": "2025-10-25T09:00:48.218Z",
+    "currentMarketCapSOL": 246.24019652614513,
+    "currentMarketCapUSD": 42353.31380249696,
+    "percentageFromATH": -11.60750259860625
   },
   {
-    "curveAddress": "ELxGN4P9bf14FqNrNjvDEUuBncFs2y4jG4f1nZqxE6Gn",
-    "athSOL": 90.42129581469212,
-    "athUSD": 16189.933015620625,
-    "athTimestamp": "2025-10-14T07:10:46.988Z",
-    "currentMarketCapSOL": 40.64134395476712,
-    "currentMarketCapUSD": 7276.832635101054,
-    "percentageFromATH": -55.05334933702255
+    "curveAddress": "8U84CGCyRcpPLmnH9YtcDD1TtADE19Ww2eVLJJSq9zAw",
+    "athSOL": 269.48850241437236,
+    "athUSD": 46352.02241527205,
+    "athTimestamp": "2025-10-25T05:53:21.588Z",
+    "currentMarketCapSOL": 29.726255241342106,
+    "currentMarketCapUSD": 5112.915901510843,
+    "percentageFromATH": -88.96937903657415
   },
   {
-    "curveAddress": "pztfcvhCdyKwe9amAvd32fdo1E9gKMPw39m6yjaFYno",
-    "athSOL": 80.70583534622465,
-    "athUSD": 14450.379818741523,
-    "athTimestamp": "2025-10-14T07:53:00.872Z",
-    "currentMarketCapSOL": 80.70583534622465,
-    "currentMarketCapUSD": 14450.379818741523,
+    "curveAddress": "5n4B4rRp2wFEouV6b99QVjKbMZExiTwuKwHxcC51iuir",
+    "athSOL": 31.860562626904468,
+    "athUSD": 5480.016771827569,
+    "athTimestamp": "2025-10-25T08:40:32.596Z",
+    "currentMarketCapSOL": 31.860562626904468,
+    "currentMarketCapUSD": 5480.016771827569,
     "percentageFromATH": 0
   }
 ]

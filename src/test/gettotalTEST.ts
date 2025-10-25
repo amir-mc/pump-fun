@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 async function calculateAccurateMarketCap() {
   // گرفتن آخرین رکورد برای curve address مورد نظر
-  const curveAddress = "pztfcvhCdyKwe9amAvd32fdo1E9gKMPw39m6yjaFYno";
+  const curveAddress = "Gj2hc86Bz1hoGKmrQtGqf9TebTkWnTk4bzk7rHJ5J3Vf";
   
   const latestRecord = await prisma.bondingCurveSignatureTest.findFirst({
     where: { curveAddress },
