@@ -84,7 +84,7 @@ async function getAndSaveSignaturesForCurve(
   const curvePubKey = new PublicKey(curveAddress);
 
   try {
-    const signatures = await connection.getSignaturesForAddress(curvePubKey, { limit: 50 });
+    const signatures = await connection.getSignaturesForAddress(curvePubKey, { limit: 80 });
     console.log(`📝 Found ${signatures.length} signatures for curve ${curveAddress}`);
 
     for (const sig of signatures) {

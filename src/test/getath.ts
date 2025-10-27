@@ -1,4 +1,4 @@
-// getath.ts
+// getath-corrected.ts
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { PrismaClient } from "../generated/prisma";
 
@@ -22,15 +22,15 @@ interface ATHRecord {
   athSOL: number;
   athUSD: number;
   athTimestamp: Date;
-  currentMarketCapSOL: number;
-  currentMarketCapUSD: number;
+  currentSOL: number;
+  currentUSD: number;
+  currentTimestamp: Date;
   percentageFromATH: number;
 }
 
 async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
   await updateSolPrice();
 
-  // پیدا کردن تمام curve addressهای منحصر به فرد
   const allCurves = await prisma.bondingCurveSignatureTest.findMany({
     select: { curveAddress: true },
     distinct: ['curveAddress']
@@ -43,7 +43,6 @@ async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
   for (const curve of allCurves) {
     const curveAddress = curve.curveAddress;
     
-    // گرفتن تمام رکوردهای این curve به ترتیب زمانی
     const allRecords = await prisma.bondingCurveSignatureTest.findMany({
       where: { curveAddress },
       orderBy: { createdAt: 'asc' }
@@ -51,22 +50,44 @@ async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
 
     if (allRecords.length === 0) continue;
 
+    console.log(`\n📊 Analyzing ${curveAddress} with ${allRecords.length} records`);
+
+    // از اولین رکورد به عنوان پایه استفاده می‌کنیم
+    const firstRecord = allRecords[0];
+    let runningVirtualSol = Number(firstRecord.virtualSolReserves);
+    let runningVirtualToken = Number(firstRecord.virtualTokenReserves);
+    
     let athSOL = 0;
     let athUSD = 0;
     let athTimestamp = new Date(0);
 
-    // محاسبه مارکت کپ برای هر نقطه در زمان
+    // برای هر تراکنش، virtual reserves رو آپدیت می‌کنیم
     for (const record of allRecords) {
-      const virtualSol = Number(record.virtualSolReserves) / LAMPORTS_PER_SOL;
-      const virtualTokens = Number(record.virtualTokenReserves) / 1e9;
+      const tokenDiff = Number(record.tokenDiff);
       const totalSupply = Number(record.tokenTotalSupply) / 1e9;
 
-      if (virtualTokens > 0) {
-        const pricePerTokenSOL = virtualSol / virtualTokens;
+      // تقریب تغییرات در virtual reserves بر اساس tokenDiff
+      if (tokenDiff > 0) {
+        // خرید: virtualSol افزایش، virtualToken کاهش
+        const solIncrease = (tokenDiff / 1e9) * (runningVirtualSol / LAMPORTS_PER_SOL) / (runningVirtualToken / 1e9) * LAMPORTS_PER_SOL;
+        runningVirtualSol += solIncrease;
+        runningVirtualToken -= tokenDiff;
+      } else if (tokenDiff < 0) {
+        // فروش: virtualSol کاهش، virtualToken افزایش  
+        const solDecrease = (Math.abs(tokenDiff) / 1e9) * (runningVirtualSol / LAMPORTS_PER_SOL) / (runningVirtualToken / 1e9) * LAMPORTS_PER_SOL;
+        runningVirtualSol -= solDecrease;
+        runningVirtualToken += Math.abs(tokenDiff);
+      }
+
+      // محاسبه قیمت فعلی - فرمول اصلاح شده: virtualSol / virtualToken (بدون ضریب 2)
+      const currentVirtualSol = runningVirtualSol / LAMPORTS_PER_SOL;
+      const currentVirtualToken = runningVirtualToken / 1e9;
+
+      if (currentVirtualToken > 0) {
+        const pricePerTokenSOL = currentVirtualSol / currentVirtualToken; // اصلاح شد: بدون ضریب 2
         const marketCapSOL = pricePerTokenSOL * totalSupply;
         const marketCapUSD = marketCapSOL * SOL_TO_USD;
 
-        // بررسی آیا این ATH جدید است
         if (marketCapUSD > athUSD) {
           athSOL = marketCapSOL;
           athUSD = marketCapUSD;
@@ -75,38 +96,37 @@ async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
       }
     }
 
-    // محاسبه مارکت کپ فعلی (آخرین رکورد)
-    const lastRecord = allRecords[allRecords.length - 1];
-    const currentVirtualSol = Number(lastRecord.virtualSolReserves) / LAMPORTS_PER_SOL;
-    const currentVirtualTokens = Number(lastRecord.virtualTokenReserves) / 1e9;
-    const currentTotalSupply = Number(lastRecord.tokenTotalSupply) / 1e9;
+    // محاسبه قیمت فعلی (آخرین وضعیت) - فرمول اصلاح شده
+    const finalVirtualSol = runningVirtualSol / LAMPORTS_PER_SOL;
+    const finalVirtualToken = runningVirtualToken / 1e9;
+    const totalSupply = Number(allRecords[allRecords.length - 1].tokenTotalSupply) / 1e9;
 
-    let currentMarketCapSOL = 0;
-    let currentMarketCapUSD = 0;
+    let currentSOL = 0;
+    let currentUSD = 0;
 
-    if (currentVirtualTokens > 0) {
-      const currentPriceSOL = currentVirtualSol / currentVirtualTokens;
-      currentMarketCapSOL = currentPriceSOL * currentTotalSupply;
-      currentMarketCapUSD = currentMarketCapSOL * SOL_TO_USD;
+    if (finalVirtualToken > 0) {
+      const pricePerTokenSOL = finalVirtualSol / finalVirtualToken; // اصلاح شد: بدون ضریب 2
+      currentSOL = pricePerTokenSOL * totalSupply;
+      currentUSD = currentSOL * SOL_TO_USD;
     }
 
-    const percentageFromATH = athUSD > 0 ? ((currentMarketCapUSD - athUSD) / athUSD) * 100 : 0;
+    const percentageFromATH = athUSD > 0 ? ((currentUSD - athUSD) / athUSD) * 100 : 0;
 
     athResults.push({
       curveAddress,
       athSOL,
       athUSD,
       athTimestamp,
-      currentMarketCapSOL,
-      currentMarketCapUSD,
+      currentSOL,
+      currentUSD,
+      currentTimestamp: allRecords[allRecords.length - 1].createdAt,
       percentageFromATH
     });
 
-    console.log(`\n📈 ${curveAddress}`);
-    console.log(`   ATH: $${athUSD.toLocaleString()} (${athSOL.toFixed(6)} SOL)`);
-    console.log(`   ATH Date: ${athTimestamp.toLocaleString()}`);
-    console.log(`   Current: $${currentMarketCapUSD.toLocaleString()} (${currentMarketCapSOL.toFixed(6)} SOL)`);
-    console.log(`   From ATH: ${percentageFromATH.toFixed(2)}%`);
+    console.log(`📈 ${curveAddress}`);
+    console.log(`   ATH: $${athUSD.toFixed(2)} (${athSOL.toFixed(2)} SOL)`);
+    console.log(`   Current: $${currentUSD.toFixed(2)} (${currentSOL.toFixed(2)} SOL)`);
+    console.log(`   Change from ATH: ${percentageFromATH.toFixed(2)}%`);
   }
 
   // مرتب‌سازی بر اساس ATH
@@ -115,43 +135,29 @@ async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
   return athResults;
 }
 
-// ذخیره نتایج در فایل
-function saveATHToFile(athResults: ATHRecord[]): void {
-  const fs = require('fs');
-  const path = require('path');
-  
-  const data = athResults.map(result => ({
-    ...result,
-    athTimestamp: result.athTimestamp.toISOString()
-  }));
-
-  const filePath = path.join(process.cwd(), 'ath_results.json');
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-  console.log(`\n💾 ATH results saved to: ${filePath}`);
-}
-
-// اجرای اصلی
 async function main() {
-  console.log("🚀 Calculating ATH for all curves...");
-  
-  const athResults = await calculateATHForAllCurves();
-  
-  console.log(`\n🎉 ATH Calculation Completed!`);
-  console.log(`📊 Total curves analyzed: ${athResults.length}`);
-  
-  // نمایش 10 تاکن برتر بر اساس ATH
-  console.log(`\n🏆 TOP 10 BY ATH:`);
-  athResults.slice(0, 10).forEach((result, index) => {
-    console.log(`${index + 1}. ${result.curveAddress}`);
-    console.log(`   ATH: $${result.athUSD.toLocaleString()}`);
-    console.log(`   Current: $${result.currentMarketCapUSD.toLocaleString()}`);
-    console.log(`   Date: ${result.athTimestamp.toLocaleDateString()}`);
-    console.log(`   Change: ${result.percentageFromATH.toFixed(2)}%`);
-    console.log('');
-  });
+  try {
+    console.log("🚀 Calculating ATH (Corrected Formula - No 2x multiplier)...");
+    
+    const athResults = await calculateATHForAllCurves();
+    
+    console.log(`\n🎉 ATH Calculation Completed!`);
+    console.log(`📊 Total curves analyzed: ${athResults.length}`);
+    
+    console.log(`\n🏆 TOP 10 BY ATH:`);
+    athResults.slice(0, 10).forEach((result, index) => {
+      console.log(`${index + 1}. ${result.curveAddress}`);
+      console.log(`   ATH: $${result.athUSD.toFixed(2)} (${result.athSOL.toFixed(2)} SOL)`);
+      console.log(`   Current: $${result.currentUSD.toFixed(2)} (${result.currentSOL.toFixed(2)} SOL)`);
+      console.log(`   Change: ${result.percentageFromATH.toFixed(2)}%`);
+      console.log('');
+    });
 
-  saveATHToFile(athResults);
-  await prisma.$disconnect();
+    await prisma.$disconnect();
+  } catch (error) {
+    console.error('❌ Error in main function:', error);
+    process.exit(1);
+  }
 }
 
 if (require.main === module) {

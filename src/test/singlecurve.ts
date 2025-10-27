@@ -6,9 +6,9 @@ const prisma = new PrismaClient()
 
 async function getToken() {
   try {
-    const token = await prisma.bondingCurveSignature.findMany({
+    const token = await prisma.bondingCurveSignatureTest.findMany({
       where: {
-        curveAddress: "EEyKhvRcwXKU2SQVimCNJYxKVtw1GXJZTprpfSQqNhue"
+        curveAddress: "qzGezedx4Y6Xm5YYpkQyve3QVMyd1oFBi44BuU7gaX3"
       }
     })
     
