@@ -24,8 +24,8 @@ const handleNewToken = async (tokenInfo: TokenInfo): Promise<void> => {
   console.log(`🆕 CURVE: ${tokenInfo.name}`);
   
   try {
-    //await saveTokenToDB(tokenInfo);
-    //await checkTokenStatus(tokenInfo);
+    await saveTokenToDB(tokenInfo);
+    await checkTokenStatus(tokenInfo);
 
     // ⚡ بعد از تاخیر 5 ثانیه‌ای checkTokenStatus:
     console.log(`⏳ Waiting 5s before fetching signatures for ${tokenInfo.name}`);

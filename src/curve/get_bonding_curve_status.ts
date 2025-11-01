@@ -160,7 +160,7 @@ async function main(bondingCurveAddress: string) {
 export async function checkTokenStatus(tokenInfo: TokenInfo): Promise<any> {
   try {
     console.log(`⏳ Waiting 60 seconds before processing token: ${tokenInfo.mint}...`);
-    await new Promise((r) => setTimeout(r, 60000));
+    await new Promise((r) => setTimeout(r, 1000));
 
     const mint = new PublicKey(tokenInfo.mint);
     const [bondingCurveAddress] = await getAssociatedBondingCurveAddress(mint, PUMP_PROGRAM_ID);
