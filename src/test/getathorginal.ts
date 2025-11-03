@@ -96,7 +96,7 @@ function formatTimeDifference(start: Date, end: Date): string {
 async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
   await updateSolPrice();
 
-  const allCurves = await prisma.bondingCurveSignatureTest.findMany({
+  const allCurves = await prisma.bondingCurveSignature.findMany({
     select: { curveAddress: true },
     distinct: ['curveAddress']
   });
@@ -108,7 +108,7 @@ async function calculateATHForAllCurves(): Promise<ATHRecord[]> {
   for (const curve of allCurves) {
     const curveAddress = curve.curveAddress;
     
-    const allRecords = await prisma.bondingCurveSignatureTest.findMany({
+    const allRecords = await prisma.bondingCurveSignature.findMany({
       where: { curveAddress },
       orderBy: { createdAt: 'asc' }
     });

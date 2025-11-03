@@ -1,665 +1,801 @@
-// websocket-server-complete.ts
-import WebSocket, { WebSocketServer } from 'ws';
+// WebSocket.ts
+import WebSocket, { WebSocketServer } from "ws";
 import { PrismaClient } from "../generated/prisma";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 const prisma = new PrismaClient();
-const wss = new WebSocketServer({ port: 8080 });
+const PORT = Number(process.env.WS_PORT || 8080);
+const wss = new WebSocketServer({ port: PORT });
 
-console.log('🚀 WebSocket Server running on port 8080');
+console.log(`🚀 WebSocket Server starting on port ${PORT}`);
 
 let SOL_TO_USD = 172;
 let isDatabaseConnected = false;
 
-// تابع برای بررسی اتصال به دیتابیس
+/** ===========================
+ * Database init & Helpers
+ * =========================== */
 async function initializeDatabase(): Promise<boolean> {
   try {
     await prisma.$connect();
     await prisma.$queryRaw`SELECT 1`;
     isDatabaseConnected = true;
-    console.log('✅ Database connection successful');
+    console.log("✅ Database connection successful");
     return true;
   } catch (error) {
-    console.error('❌ Database connection failed:', error);
+    console.error("❌ Database connection failed:", error);
     isDatabaseConnected = false;
     return false;
   }
 }
 
-// تابع برای آپدیت قیمت SOL
+/** ===========================
+ * SOL price updater
+ * =========================== */
 async function updateSolPrice(): Promise<number> {
   try {
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
+    );
     const data = await res.json();
     if (data?.solana?.usd) {
       SOL_TO_USD = data.solana.usd;
       console.log(`💰 SOL Price Updated: $${SOL_TO_USD}`);
     }
-    return SOL_TO_USD;
   } catch (e) {
-    console.log('⚠️ Using default SOL price');
-    return SOL_TO_USD;
+    console.log("⚠️ Using cached/default SOL price:", SOL_TO_USD);
   }
+  return SOL_TO_USD;
 }
 
-// تابع برای تبدیل BigInt به number
-function bigIntToNumber(bigIntValue: bigint): number {
-  return Number(bigIntValue);
-}
+/** ===========================
+ * Core Calculation Functions (Based on your provided logic)
+ * =========================== */
 
-// تابع برای محاسبه قیمت از فرمول واقعی
-function calculateBondingCurvePrice(virtualSolReserves: bigint, virtualTokenReserves: bigint): number {
-  const TOKEN_DECIMALS = 6;
+/**
+ * محاسبه قیمت بر اساس فرمول بهبود یافته (مشابه فایل getath-with-correct-initial-price.ts)
+ */
+function calculateTokenPrice(
+  virtualSolReserves: bigint,
+  virtualTokenReserves: bigint,
+  totalSupply: bigint
+): { pricePerTokenSOL: number; marketCapSOL: number } {
+  if (virtualSolReserves <= 0n || virtualTokenReserves <= 0n) {
+    return { pricePerTokenSOL: 0, marketCapSOL: 0 };
+  }
+
+  const virtualSol = Number(virtualSolReserves) / Number(LAMPORTS_PER_SOL);
+  const virtualTokens = Number(virtualTokenReserves) / 1e9;
+  const totalSupplyTokens = Number(totalSupply) / 1e9;
+
+  if (virtualTokens <= 0 || totalSupplyTokens <= 0) {
+    return { pricePerTokenSOL: 0, marketCapSOL: 0 };
+  }
+
+  // فرمول اصلی: قیمت = virtualSol / virtualTokens
+  const pricePerTokenSOL = virtualSol / virtualTokens;
   
-  if (virtualTokenReserves <= 0n || virtualSolReserves <= 0n) {
-    return 0;
+  // مارکت‌کپ = قیمت × عرضه کل
+  const marketCapSOL = pricePerTokenSOL * totalSupplyTokens;
+
+  return { pricePerTokenSOL, marketCapSOL };
+}
+/**
+ * تبدیل زمان به فرمت خوانا
+ */
+function formatTimeDifference(start: Date, end: Date): string {
+  const diffMs = end.getTime() - start.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) {
+    return `${diffDays} day${diffDays > 1 ? 's' : ''} ${diffHours % 24} hour${diffHours % 24 > 1 ? 's' : ''}`;
+  } else if (diffHours > 0) {
+    return `${diffHours} hour${diffHours > 1 ? 's' : ''} ${diffMinutes % 60} minute${diffMinutes % 60 > 1 ? 's' : ''}`;
+  } else {
+    return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''}`;
   }
-
-  const sol = bigIntToNumber(virtualSolReserves) / Number(LAMPORTS_PER_SOL);
-  const tokens = bigIntToNumber(virtualTokenReserves) / 10 ** TOKEN_DECIMALS;
-
-  return sol / tokens;
 }
 
-// تابع برای محاسبه مارکت کپ
-function calculateMarketCap(virtualSolReserves: bigint, virtualTokenReserves: bigint, tokenTotalSupply: bigint): {
-  priceSOL: number;
-  marketCapSOL: number;
-  marketCapUSD: number;
-} {
-  const TOKEN_DECIMALS = 6;
-  const priceSOL = calculateBondingCurvePrice(virtualSolReserves, virtualTokenReserves);
-  const totalSupply = bigIntToNumber(tokenTotalSupply) / 10 ** TOKEN_DECIMALS;
-  const marketCapSOL = priceSOL * totalSupply;
-  const marketCapUSD = marketCapSOL * SOL_TO_USD;
+/** ===========================
+ * Data Getters (Based on your corrected logic)
+ * =========================== */
 
-  return { priceSOL, marketCapSOL, marketCapUSD };
-}
-
-// تابع برای ساخت تاریخچه قیمت واقعی بر اساس تمام signatureها با شبیه‌سازی تراکنش‌ها
-async function getRealPriceHistory(curveAddress: string, limit: number = 200) {
+/**
+ * برگرداندن لیست curveها
+ */
+async function getAvailableCurves(): Promise<
+  { curveAddress: string; tokenName: string; tokenSymbol: string }[]
+> {
   try {
-    const allRecords = await prisma.bondingCurveSignatureTest.findMany({
-      where: { curveAddress },
-      orderBy: { createdAt: 'asc' },
-      take: limit
+    const curves = await prisma.bondingCurveSignature.findMany({
+      select: { curveAddress: true },
+      distinct: ["curveAddress"],
+      orderBy: { createdAt: "desc" },
+      take: 200,
     });
 
-    if (allRecords.length === 0) {
-      console.log(`❌ No records found for curve: ${curveAddress}`);
-      return [];
+    const result = await Promise.all(
+      curves.map(async (c) => {
+        const token = await prisma.token.findFirst({
+          where: { bondingCurve: c.curveAddress },
+        });
+        return {
+          curveAddress: c.curveAddress,
+          tokenName: token?.name || "Unknown",
+          tokenSymbol: token?.symbol || "UNK",
+        };
+      })
+    );
+
+    return result;
+  } catch (error) {
+    console.error("❌ Error fetching available curves:", error);
+    return [];
+  }
+}
+
+/**
+ * محاسبه ATH برای یک curve (بر اساس منطق getath-with-correct-initial-price.ts)
+ */
+async function calculateATHForCurve(curveAddress: string): Promise<any> {
+  const allRecords = await prisma.bondingCurveSignature.findMany({
+    where: { curveAddress },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  if (allRecords.length === 0) {
+    throw new Error("No records for curve");
+  }
+
+  console.log(`📊 Analyzing ${curveAddress} with ${allRecords.length} records`);
+
+  // اولین رکورد (عرضه اولیه)
+  const firstRecord = allRecords[0];
+  
+  // محاسبه قیمت زمان عرضه با فرمول بهبود یافته
+  const { pricePerTokenSOL: initialPriceSOL, marketCapSOL: initialMarketCapSOL } = 
+    calculateTokenPrice(
+      firstRecord.virtualSolReserves,
+      firstRecord.virtualTokenReserves,
+      firstRecord.tokenTotalSupply
+    );
+  
+  const initialPriceUSD = initialPriceSOL * SOL_TO_USD;
+  const initialTimestamp = firstRecord.createdAt;
+
+  console.log(`🎯 Initial Price Calculation:`);
+  console.log(`   virtualSolReserves: ${firstRecord.virtualSolReserves}`);
+  console.log(`   virtualTokenReserves: ${firstRecord.virtualTokenReserves}`);
+  console.log(`   tokenTotalSupply: ${firstRecord.tokenTotalSupply}`);
+  console.log(`   Calculated Price: ${initialPriceSOL.toFixed(8)} SOL ($${initialPriceUSD.toFixed(6)} USD)`);
+
+  let runningVirtualSol = Number(firstRecord.virtualSolReserves);
+  let runningVirtualToken = Number(firstRecord.virtualTokenReserves);
+  
+  let athSOL = initialMarketCapSOL;
+  let athUSD = initialMarketCapSOL * SOL_TO_USD;
+  let athTimestamp = initialTimestamp;
+
+  // برای هر تراکنش، virtual reserves رو آپدیت می‌کنیم
+  for (const record of allRecords) {
+    const tokenDiff = Number(record.tokenDiff);
+
+    // تقریب تغییرات در virtual reserves بر اساس tokenDiff
+    if (tokenDiff > 0) {
+      // خرید: virtualSol افزایش، virtualToken کاهش
+      const currentPriceSOL = calculateTokenPrice(
+        BigInt(Math.round(runningVirtualSol)),
+        BigInt(Math.round(runningVirtualToken)),
+        record.tokenTotalSupply
+      ).pricePerTokenSOL;
+      
+      const solIncrease = (tokenDiff / 1e9) * currentPriceSOL * LAMPORTS_PER_SOL;
+      runningVirtualSol += solIncrease;
+      runningVirtualToken -= tokenDiff;
+    } else if (tokenDiff < 0) {
+      // فروش: virtualSol کاهش، virtualToken افزایش  
+      const currentPriceSOL = calculateTokenPrice(
+        BigInt(Math.round(runningVirtualSol)),
+        BigInt(Math.round(runningVirtualToken)),
+        record.tokenTotalSupply
+      ).pricePerTokenSOL;
+      
+      const solDecrease = (Math.abs(tokenDiff) / 1e9) * currentPriceSOL * LAMPORTS_PER_SOL;
+      runningVirtualSol -= solDecrease;
+      runningVirtualToken += Math.abs(tokenDiff);
     }
 
-    console.log(`📊 Building real price history for ${curveAddress} with ${allRecords.length} records`);
-
-    // از اولین رکورد به عنوان پایه استفاده می‌کنیم
-    const firstRecord = allRecords[0];
-    let runningVirtualSol = Number(firstRecord.virtualSolReserves);
-    let runningVirtualToken = Number(firstRecord.virtualTokenReserves);
+    // محاسبه مارکت‌کپ فعلی
+    const { marketCapSOL: currentMarketCapSOL } = calculateTokenPrice(
+      BigInt(Math.round(runningVirtualSol)),
+      BigInt(Math.round(runningVirtualToken)),
+      record.tokenTotalSupply
+    );
     
-    const priceHistory = [];
-    let athPrice = 0;
-    let athMarketCap = 0;
-    let athTimestamp = firstRecord.createdAt;
+    const currentMarketCapUSD = currentMarketCapSOL * SOL_TO_USD;
 
-    console.log(`🔄 Starting simulation with:`);
-    console.log(`   - Initial Virtual SOL: ${runningVirtualSol}`);
-    console.log(`   - Initial Virtual Token: ${runningVirtualToken}`);
+    if (currentMarketCapUSD > athUSD) {
+      athSOL = currentMarketCapSOL;
+      athUSD = currentMarketCapUSD;
+      athTimestamp = record.createdAt;
+    }
+  }
 
-    // برای هر تراکنش، virtual reserves رو آپدیت می‌کنیم و قیمت رو محاسبه می‌کنیم
-    for (let i = 0; i < allRecords.length; i++) {
-      const record = allRecords[i];
+  // محاسبه قیمت فعلی (آخرین وضعیت)
+  const lastRecord = allRecords[allRecords.length - 1];
+  const { marketCapSOL: currentMarketCapSOL, pricePerTokenSOL: currentPriceSOL } = calculateTokenPrice(
+    BigInt(Math.round(runningVirtualSol)),
+    BigInt(Math.round(runningVirtualToken)),
+    lastRecord.tokenTotalSupply
+  );
+  
+  const currentMarketCapUSD = currentMarketCapSOL * SOL_TO_USD;
+  const currentPriceUSD = currentPriceSOL * SOL_TO_USD;
+
+  // محاسبه زمان رسیدن به ATH
+  const timeToATHMinutes = (athTimestamp.getTime() - initialTimestamp.getTime()) / (1000 * 60);
+  const timeToATH = formatTimeDifference(initialTimestamp, athTimestamp);
+
+  const percentageFromATH = athUSD > 0 ? ((currentMarketCapUSD - athUSD) / athUSD) * 100 : 0;
+  const percentageFromInitial = initialMarketCapSOL > 0 ? 
+    ((currentMarketCapSOL - initialMarketCapSOL) / initialMarketCapSOL) * 100 : 0;
+
+  // پیدا کردن نام و نماد توکن
+  const token = await prisma.token.findFirst({
+    where: { bondingCurve: curveAddress }
+  });
+
+  const result = {
+    tokenName: token?.name || "Unknown",
+    tokenSymbol: token?.symbol || "UNK",
+    initialPriceSOL,
+    initialPriceUSD,
+    initialTimestamp: initialTimestamp.toISOString(),
+    athSOL,
+    athUSD,
+    athTimestamp: athTimestamp.toISOString(),
+    timeToATH,
+    timeToATHMinutes,
+    currentSOL: currentMarketCapSOL,
+    currentUSD: currentMarketCapUSD,
+    currentPriceSOL,
+    currentPriceUSD,
+    currentTimestamp: lastRecord.createdAt.toISOString(),
+    percentageFromATH,
+    percentageFromInitial
+  };
+
+  console.log(`📈 ATH Analysis for ${token?.name || "Unknown"} (${token?.symbol || "UNK"}):`);
+  console.log(`   Initial Price: $${initialPriceUSD.toFixed(4)} (${initialPriceSOL.toFixed(6)} SOL)`);
+  console.log(`   ATH MarketCap: $${athUSD.toFixed(2)} (${athSOL.toFixed(2)} SOL)`);
+  console.log(`   Current MarketCap: $${currentMarketCapUSD.toFixed(2)} (${currentMarketCapSOL.toFixed(2)} SOL)`);
+  console.log(`   Current Price: $${currentPriceUSD.toFixed(4)} (${currentPriceSOL.toFixed(6)} SOL)`);
+  console.log(`   Time to ATH: ${timeToATH}`);
+  console.log(`   Change from ATH: ${percentageFromATH.toFixed(2)}%`);
+  console.log(`   Change from Initial: ${percentageFromInitial.toFixed(2)}%`);
+
+  return result;
+}
+
+/**
+ * ساخت تاریخچه قیمت برای یک curve
+ */
+async function getPriceHistory(curveAddress: string, limit = 200) {
+  try {
+    const allRecords = await prisma.bondingCurveSignature.findMany({
+      where: { curveAddress },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+
+    if (allRecords.length === 0) return [];
+
+    const history: any[] = [];
+    let runningVirtualSol = Number(allRecords[0].virtualSolReserves);
+    let runningVirtualToken = Number(allRecords[0].virtualTokenReserves);
+
+    for (const record of allRecords) {
       const tokenDiff = Number(record.tokenDiff);
-      const totalSupply = Number(record.tokenTotalSupply) / 1e9;
 
-      // لاگ جزئیات هر رکورد
-      console.log(`\n📝 Processing record ${i + 1}/${allRecords.length}:`);
-      console.log(`   - Timestamp: ${record.createdAt}`);
-      console.log(`   - Token Diff: ${tokenDiff}`);
-      console.log(`   - Before - Virtual SOL: ${runningVirtualSol}, Virtual Token: ${runningVirtualToken}`);
+      // محاسبه قیمت قبل از اعمال تغییرات
+      const { pricePerTokenSOL: priceBefore } = calculateTokenPrice(
+        BigInt(Math.round(runningVirtualSol)),
+        BigInt(Math.round(runningVirtualToken)),
+        record.tokenTotalSupply
+      );
 
-      // تقریب تغییرات در virtual reserves بر اساس tokenDiff
+      // اعمال تغییرات tokenDiff
       if (tokenDiff > 0) {
-        // خرید: virtualSol افزایش، virtualToken کاهش
-        const priceBefore = runningVirtualToken > 0 ? (runningVirtualSol / LAMPORTS_PER_SOL) / (runningVirtualToken / 1e9) : 0;
         const solIncrease = (tokenDiff / 1e9) * priceBefore * LAMPORTS_PER_SOL;
-        
         runningVirtualSol += solIncrease;
         runningVirtualToken -= tokenDiff;
-        
-        console.log(`   🛒 BUY: +${solIncrease} SOL, -${tokenDiff} tokens`);
-        console.log(`   - Price before: ${priceBefore}`);
-
       } else if (tokenDiff < 0) {
-        // فروش: virtualSol کاهش، virtualToken افزایش  
-        const priceBefore = runningVirtualToken > 0 ? (runningVirtualSol / LAMPORTS_PER_SOL) / (runningVirtualToken / 1e9) : 0;
         const solDecrease = (Math.abs(tokenDiff) / 1e9) * priceBefore * LAMPORTS_PER_SOL;
-        
         runningVirtualSol -= solDecrease;
         runningVirtualToken += Math.abs(tokenDiff);
-        
-        console.log(`   🏷️ SELL: -${solDecrease} SOL, +${Math.abs(tokenDiff)} tokens`);
-        console.log(`   - Price before: ${priceBefore}`);
-      } else {
-        console.log(`   ➖ NO CHANGE in tokens`);
       }
 
-      // محاسبه قیمت فعلی
-      const currentVirtualSol = runningVirtualSol / LAMPORTS_PER_SOL;
-      const currentVirtualToken = runningVirtualToken / 1e9;
+      // محاسبه قیمت بعد از اعمال تغییرات
+      const { pricePerTokenSOL: priceAfter, marketCapSOL: marketCapAfter } = calculateTokenPrice(
+        BigInt(Math.round(runningVirtualSol)),
+        BigInt(Math.round(runningVirtualToken)),
+        record.tokenTotalSupply
+      );
 
-      let priceSOL = 0;
-      let marketCapSOL = 0;
-      let marketCapUSD = 0;
-
-      if (currentVirtualToken > 0) {
-        priceSOL = currentVirtualSol / currentVirtualToken;
-        marketCapSOL = priceSOL * totalSupply;
-        marketCapUSD = marketCapSOL * SOL_TO_USD;
-      }
-
-      console.log(`   - After - Virtual SOL: ${runningVirtualSol}, Virtual Token: ${runningVirtualToken}`);
-      console.log(`   - Calculated Price: ${priceSOL} SOL`);
-      console.log(`   - Market Cap: $${marketCapUSD}`);
-
-      // بررسی ATH
-      if (marketCapUSD > athMarketCap) {
-        athPrice = priceSOL;
-        athMarketCap = marketCapUSD;
-        athTimestamp = record.createdAt;
-        console.log(`   🏆 NEW ATH: ${priceSOL} SOL ($${marketCapUSD})`);
-      }
-
-      priceHistory.push({
+      history.push({
         x: record.createdAt.getTime(),
-        y: priceSOL,
-        marketCapUSD: marketCapUSD,
-        marketCapSOL: marketCapSOL,
-        priceSOL: priceSOL,
-        priceUSD: priceSOL * SOL_TO_USD,
+        priceSOL: priceAfter,
+        priceUSD: priceAfter * SOL_TO_USD,
+        marketCapSOL: marketCapAfter,
+        marketCapUSD: marketCapAfter * SOL_TO_USD,
         virtualSolReserves: runningVirtualSol,
         virtualTokenReserves: runningVirtualToken,
         tokenTotalSupply: Number(record.tokenTotalSupply),
-        tokenDiff: tokenDiff
+        tokenDiff,
+        timestamp: record.createdAt.toISOString()
       });
     }
 
-    console.log(`\n✅ Built real price history with ${priceHistory.length} points`);
-    console.log(`📈 Final ATH: ${athPrice} SOL ($${athMarketCap}) at ${athTimestamp}`);
-    
-    // بررسی تغییرات قیمت
-    const uniquePrices = [...new Set(priceHistory.map(p => p.y.toFixed(8)))];
-    console.log(`🔢 Unique prices: ${uniquePrices.length}`);
-    
-    if (uniquePrices.length <= 1) {
-      console.log(`⚠️ WARNING: No price variation detected!`);
-      console.log(`   All prices: ${priceHistory.map(p => p.y)}`);
-    }
-
-    return priceHistory;
+    return history;
   } catch (error) {
-    console.error('❌ Error building real price history:', error);
+    console.error("❌ Error building price history:", error);
     return [];
   }
 }
+async function getLaunchPriceData(curveAddress: string) {
+  const firstRecord = await prisma.bondingCurveSignature.findFirst({
+    where: { curveAddress },
+    orderBy: { createdAt: 'asc' }
+  });
 
-// تابع برای محاسبه ATH با فرمول اصلاح شده
-async function calculateATHForCurve(curveAddress: string): Promise<{
-  athSOL: number;
-  athUSD: number;
-  athTimestamp: Date;
-  currentSOL: number;
-  currentUSD: number;
-  currentTimestamp: Date;
-  percentageFromATH: number;
-  athMarketCapUSD: number;
-  athMarketCapSOL: number;
-}> {
-  const priceHistory = await getRealPriceHistory(curveAddress, 500);
-  
-  if (priceHistory.length === 0) {
-    return {
-      athSOL: 0,
-      athUSD: 0,
-      athTimestamp: new Date(),
-      currentSOL: 0,
-      currentUSD: 0,
-      currentTimestamp: new Date(),
-      percentageFromATH: 0,
-      athMarketCapUSD: 0,
-      athMarketCapSOL: 0
-    };
-  }
-
-  // پیدا کردن ATH از تاریخچه
-  let athRecord = priceHistory[0];
-  for (const record of priceHistory) {
-    if (record.marketCapUSD > athRecord.marketCapUSD) {
-      athRecord = record;
-    }
-  }
-
-  const currentRecord = priceHistory[priceHistory.length - 1];
-  const percentageFromATH = athRecord.marketCapUSD > 0 
-    ? ((currentRecord.marketCapUSD - athRecord.marketCapUSD) / athRecord.marketCapUSD) * 100 
-    : 0;
-
-  console.log(`🏆 ATH Calculation for ${curveAddress}:`);
-  console.log(`   - ATH Price: ${athRecord.priceSOL} SOL ($${athRecord.priceUSD})`);
-  console.log(`   - ATH Market Cap: $${athRecord.marketCapUSD}`);
-  console.log(`   - Current Price: ${currentRecord.priceSOL} SOL ($${currentRecord.priceUSD})`);
-  console.log(`   - Current Market Cap: $${currentRecord.marketCapUSD}`);
-  console.log(`   - Percentage from ATH: ${percentageFromATH.toFixed(2)}%`);
-
-  return {
-    athSOL: athRecord.priceSOL,
-    athUSD: athRecord.priceUSD,
-    athTimestamp: new Date(athRecord.x),
-    currentSOL: currentRecord.priceSOL,
-    currentUSD: currentRecord.priceUSD,
-    currentTimestamp: new Date(currentRecord.x),
-    percentageFromATH: percentageFromATH,
-    athMarketCapUSD: athRecord.marketCapUSD,
-    athMarketCapSOL: athRecord.marketCapSOL
-  };
-}
-
-// تابع برای محاسبه قیمت لانچ
-function calculateLaunchPrice(priceHistory: any[]): {
-  launchPriceSOL: number;
-  launchPriceUSD: number;
-  launchTimestamp: string;
-  launchMarketCapUSD: number;
-  launchMarketCapSOL: number;
-} {
-  if (priceHistory.length === 0) {
+  if (!firstRecord) {
     return {
       launchPriceSOL: 0,
       launchPriceUSD: 0,
-      launchTimestamp: new Date().toISOString(),
+      launchMarketCapSOL: 0,
       launchMarketCapUSD: 0,
-      launchMarketCapSOL: 0
+      launchTimestamp: new Date().toISOString()
     };
   }
 
-  const launchRecord = priceHistory[0];
+  // محاسبه قیمت لانچ با استفاده از اولین رکورد
+  const { pricePerTokenSOL: launchPriceSOL, marketCapSOL: launchMarketCapSOL } = 
+    calculateTokenPrice(
+      firstRecord.virtualSolReserves,
+      firstRecord.virtualTokenReserves,
+      firstRecord.tokenTotalSupply
+    );
+
+  const launchPriceUSD = launchPriceSOL * SOL_TO_USD;
+  const launchMarketCapUSD = launchMarketCapSOL * SOL_TO_USD;
+
+  console.log(`🚀 Launch Price for ${curveAddress}:`);
+  console.log(`   Price: ${launchPriceSOL.toFixed(8)} SOL ($${launchPriceUSD.toFixed(6)} USD)`);
+  console.log(`   MarketCap: ${launchMarketCapSOL.toFixed(2)} SOL ($${launchMarketCapUSD.toFixed(2)} USD)`);
+
   return {
-    launchPriceSOL: launchRecord.priceSOL,
-    launchPriceUSD: launchRecord.priceUSD,
-    launchTimestamp: new Date(launchRecord.x).toISOString(),
-    launchMarketCapUSD: launchRecord.marketCapUSD,
-    launchMarketCapSOL: launchRecord.marketCapSOL
+    launchPriceSOL,
+    launchPriceUSD,
+    launchMarketCapSOL,
+    launchMarketCapUSD,
+    launchTimestamp: firstRecord.createdAt.toISOString()
   };
 }
-
-// تابع برای گرفتن لیست curveهای موجود در دیتابیس
-async function getAvailableCurves(): Promise<string[]> {
-  try {
-    const curves = await prisma.bondingCurveSignatureTest.findMany({
-      select: { curveAddress: true },
-      distinct: ['curveAddress'],
-      orderBy: { createdAt: 'desc' },
-      take: 50
-    });
-    return curves.map(curve => curve.curveAddress);
-  } catch (error) {
-    console.error('Error fetching available curves:', error);
-    return [];
-  }
-}
-
-// تابع برای گرفتن اطلاعات کامل curve
+/**
+ * داده کامل یک curve
+ */
 async function getCompleteCurveData(curveAddress: string) {
-  if (!isDatabaseConnected) {
-    throw new Error('Database is not connected');
-  }
+  if (!isDatabaseConnected) throw new Error("Database is not connected");
 
-  const latestRecord = await prisma.bondingCurveSignatureTest.findFirst({
+  const latestRecord = await prisma.bondingCurveSignature.findFirst({
     where: { curveAddress },
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: "desc" },
   });
 
-  if (!latestRecord) {
-    throw new Error(`No data found for curve: ${curveAddress}`);
-  }
+  if (!latestRecord) throw new Error("No data for curve");
 
-  // محاسبات ساده برای قیمت فعلی
-  const TOKEN_DECIMALS = 6;
-  const virtualTokens = bigIntToNumber(latestRecord.virtualTokenReserves) / 10 ** TOKEN_DECIMALS;
-  const virtualSol = bigIntToNumber(latestRecord.virtualSolReserves) / Number(LAMPORTS_PER_SOL);
-  const realTokens = bigIntToNumber(latestRecord.realTokenReserves) / 10 ** TOKEN_DECIMALS;
-  const realSol = bigIntToNumber(latestRecord.realSolReserves) / Number(LAMPORTS_PER_SOL);
-  const totalSupply = bigIntToNumber(latestRecord.tokenTotalSupply) / 10 ** TOKEN_DECIMALS;
-
-  const { priceSOL, marketCapSOL, marketCapUSD } = calculateMarketCap(
-    latestRecord.virtualSolReserves,
-    latestRecord.virtualTokenReserves,
-    latestRecord.tokenTotalSupply
-  );
-
-  // گرفتن تاریخچه قیمت REAL
-  const priceHistory = await getRealPriceHistory(curveAddress, 200);
-  
-  // محاسبه ATH با فرمول اصلاح شده
+  // محاسبه ATH و داده‌های اولیه
   const athData = await calculateATHForCurve(curveAddress);
+  const priceHistory = await getPriceHistory(curveAddress, 1000);
   
-  // محاسبه قیمت لانچ
-  const launchData = calculateLaunchPrice(priceHistory);
+  // محاسبه قیمت لانچ صحیح
+  const launchData = await getLaunchPriceData(curveAddress);
 
   // محاسبه درصد تغییر از لانچ
-  const percentageFromLaunch = launchData.launchPriceSOL > 0 
-    ? ((priceSOL - launchData.launchPriceSOL) / launchData.launchPriceSOL) * 100 
-    : 0;
+  const percentageFromLaunch = launchData.launchPriceSOL > 0 ? 
+    ((athData.currentPriceSOL - launchData.launchPriceSOL) / launchData.launchPriceSOL) * 100 : 0;
+
+  // محاسبه قیمت و مارکت‌کپ فعلی از آخرین رکورد
+  const { pricePerTokenSOL: currentPriceSOL, marketCapSOL: currentMarketCapSOL } = 
+    calculateTokenPrice(
+      latestRecord.virtualSolReserves,
+      latestRecord.virtualTokenReserves,
+      latestRecord.tokenTotalSupply
+    );
+
+  const currentPriceUSD = currentPriceSOL * SOL_TO_USD;
+  const currentMarketCapUSD = currentMarketCapSOL * SOL_TO_USD;
+
+  const token = await prisma.token.findFirst({
+    where: { bondingCurve: curveAddress }
+  });
 
   const result = {
     curveAddress,
-    virtualTokens,
-    virtualSol,
-    realTokens,
-    realSol,
-    totalSupply,
-    complete: latestRecord.complete,
-    creator: latestRecord.creator || null,
+    tokenName: athData.tokenName,
+    tokenSymbol: athData.tokenSymbol,
+    complete: latestRecord.complete ?? false,
+    creator: latestRecord.creator ?? null,
     lastUpdated: latestRecord.createdAt.toISOString(),
-    
-    // قیمت و مارکت کپ فعلی
-    currentPriceSOL: priceSOL,
-    currentPriceUSD: priceSOL * SOL_TO_USD,
-    currentMarketCapSOL: marketCapSOL,
-    currentMarketCapUSD: marketCapUSD,
-    
-    // اطلاعات لانچ
+
+    // قیمت و مارکت‌کپ فعلی
+    currentPriceSOL,
+    currentPriceUSD,
+    currentMarketCapSOL,
+    currentMarketCapUSD,
+
+    // داده‌های لانچ - استفاده از مقادیر محاسبه شده صحیح
     launchPriceSOL: launchData.launchPriceSOL,
     launchPriceUSD: launchData.launchPriceUSD,
     launchTimestamp: launchData.launchTimestamp,
     launchMarketCapUSD: launchData.launchMarketCapUSD,
     launchMarketCapSOL: launchData.launchMarketCapSOL,
-    percentageFromLaunch: percentageFromLaunch,
-    
-    // ATH - با فرمول اصلاح شده
+    percentageFromLaunch,
+
+    // داده‌های ATH
     athSOL: athData.athSOL,
     athUSD: athData.athUSD,
-    athTimestamp: athData.athTimestamp.toISOString(),
+    athTimestamp: athData.athTimestamp,
     percentageFromATH: athData.percentageFromATH,
-    athMarketCapUSD: athData.athMarketCapUSD,
-    athMarketCapSOL: athData.athMarketCapSOL,
-    
-    // داده‌های چارت REAL
-    priceHistory: priceHistory,
-    
-    // متا داده
+    athMarketCapUSD: athData.athUSD,
+    athMarketCapSOL: athData.athSOL,
+
+    // داده‌های اولیه
+    initialPriceSOL: athData.initialPriceSOL,
+    initialPriceUSD: athData.initialPriceUSD,
+    initialTimestamp: athData.initialTimestamp,
+    percentageFromInitial: athData.percentageFromInitial,
+    timeToATH: athData.timeToATH,
+    timeToATHMinutes: athData.timeToATHMinutes,
+
+    // تاریخچه و داده‌های دیگر
+    priceHistory,
     solPrice: SOL_TO_USD,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+
+    // داده‌های curve
+    virtualTokens: Number(latestRecord.virtualTokenReserves) / 1e9,
+    virtualSol: Number(latestRecord.virtualSolReserves) / LAMPORTS_PER_SOL,
+    realTokens: 0,
+    realSol: 0,
+    totalSupply: Number(latestRecord.tokenTotalSupply) / 1e9
   };
 
-  console.log(`📊 Final Curve Data for ${curveAddress}:`);
-  console.log(`   - Current Price: ${result.currentPriceSOL} SOL ($${result.currentPriceUSD})`);
-  console.log(`   - ATH Price: ${result.athSOL} SOL ($${result.athUSD})`);
-  console.log(`   - ATH Market Cap: $${result.athMarketCapUSD}`);
-  console.log(`   - Percentage from ATH: ${result.percentageFromATH}%`);
-  console.log(`   - Price History Points: ${result.priceHistory.length}`);
+  console.log(`📊 Final Curve Data for ${result.tokenName} (${result.tokenSymbol}):`);
+  console.log(`   Launch: ${result.launchPriceSOL.toFixed(8)} SOL ($${result.launchPriceUSD.toFixed(6)})`);
+  console.log(`   Current: ${result.currentPriceSOL.toFixed(8)} SOL ($${result.currentPriceUSD.toFixed(6)})`);
+  console.log(`   ATH: $${result.athUSD.toFixed(2)}`);
+  console.log(`   Change from Launch: ${result.percentageFromLaunch.toFixed(2)}%`);
 
   return result;
 }
 
-// تابع برای گرفتن داده همه curveهای موجود
+/**
+ * گرفتن همه curves
+ */
 async function getAllCurvesData() {
-  const availableCurves = await getAvailableCurves();
-  const allCurvesData = [];
-
-  for (const curveAddress of availableCurves) {
+  const available = await getAvailableCurves();
+  const out: any[] = [];
+  
+  for (const c of available) {
     try {
-      const curveData = await getCompleteCurveData(curveAddress);
-      allCurvesData.push(curveData);
-    } catch (error: any) {
-      console.log(`⚠️ Skipping curve ${curveAddress}:`, error.message);
+      const d = await getCompleteCurveData(c.curveAddress);
+      out.push(d);
+    } catch (e: any) {
+      console.warn(`⚠️ Skipping ${c.curveAddress}: ${e?.message || e}`);
     }
   }
 
-  // مرتب‌سازی بر اساس مارکت کپ
-  return allCurvesData.sort((a, b) => b.currentMarketCapUSD - a.currentMarketCapUSD);
+  // مرتب بر اساس currentMarketCapUSD
+  return out.sort((a, b) => (b.currentMarketCapUSD || 0) - (a.currentMarketCapUSD || 0));
 }
 
-// تابع برای گرفتن Top ATH
-async function getTopATH(limit: number = 10) {
-  const availableCurves = await getAvailableCurves();
-  const curvesWithATH = [];
+/**
+ * گرفتن Top ATH (بر اساس منطق فایل شما)
+ */
+async function getTopATH(limit = 10) {
+  const available = await getAvailableCurves();
+  const out: any[] = [];
 
-  for (const curveAddress of availableCurves) {
+  for (const c of available) {
     try {
-      const athData = await calculateATHForCurve(curveAddress);
-      
-      // فقط curveهایی که ATH معتبر دارند
-      if (athData.athMarketCapUSD > 1000) {
-        // گرفتن اطلاعات فعلی برای نمایش
-        const latestRecord = await prisma.bondingCurveSignatureTest.findFirst({
-          where: { curveAddress },
-          orderBy: { createdAt: 'desc' }
+      const ath = await calculateATHForCurve(c.curveAddress);
+      // فیلتر اولیه (ATH معنادار)
+      if ((ath.athUSD ?? 0) > 0.01) {
+        out.push({
+          tokenName: ath.tokenName,
+          tokenSymbol: ath.tokenSymbol,
+          curveAddress: c.curveAddress,
+          athSOL: ath.athSOL,
+          athUSD: ath.athUSD,
+          athTimestamp: ath.athTimestamp,
+          athMarketCapUSD: ath.athUSD,
+          athMarketCapSOL: ath.athSOL,
+          currentPriceSOL: ath.currentPriceSOL,
+          currentPriceUSD: ath.currentPriceUSD,
+          currentMarketCapSOL: ath.currentSOL,
+          currentMarketCapUSD: ath.currentUSD,
+          percentageFromATH: ath.percentageFromATH,
+          percentageFromInitial: ath.percentageFromInitial,
+          timeToATH: ath.timeToATH,
+          timeToATHMinutes: ath.timeToATHMinutes,
+          lastUpdated: ath.currentTimestamp
         });
-
-        if (latestRecord) {
-          const { priceSOL, marketCapSOL, marketCapUSD } = calculateMarketCap(
-            latestRecord.virtualSolReserves,
-            latestRecord.virtualTokenReserves,
-            latestRecord.tokenTotalSupply
-          );
-
-          curvesWithATH.push({
-            curveAddress,
-            athSOL: athData.athSOL,
-            athUSD: athData.athUSD,
-            athTimestamp: athData.athTimestamp.toISOString(),
-            athMarketCapUSD: athData.athMarketCapUSD,
-            athMarketCapSOL: athData.athMarketCapSOL,
-            currentPriceSOL: priceSOL,
-            currentPriceUSD: priceSOL * SOL_TO_USD,
-            currentMarketCapSOL: marketCapSOL,
-            currentMarketCapUSD: marketCapUSD,
-            percentageFromATH: athData.percentageFromATH,
-            lastUpdated: latestRecord.createdAt.toISOString()
-          });
-        }
       }
-    } catch (error: any) {
-      console.log(`⚠️ Skipping curve ${curveAddress}:`, error.message);
+    } catch (e: any) {
+      console.warn(`⚠️ Skipping ${c.curveAddress} in topATH:`, e?.message || e);
     }
   }
 
-  // مرتب‌سازی بر اساس ATH Market Cap
-  return curvesWithATH
-    .sort((a, b) => b.athMarketCapUSD - a.athMarketCapUSD)
-    .slice(0, limit);
+  return out.sort((a, b) => (b.athMarketCapUSD || 0) - (a.athMarketCapUSD || 0)).slice(0, limit);
 }
 
-// مقداردهی اولیه
-initializeDatabase().then(success => {
-  if (success) {
-    console.log('✅ Server is ready to handle requests');
-    // آپدیت اولیه قیمت SOL
-    updateSolPrice();
-  } else {
-    console.log('❌ Server started but database is unavailable');
+/**
+ * تحلیل جامع (بر اساس منطق comprehensive-analysis.ts)
+ */
+async function generateComprehensiveAnalysis() {
+  const available = await getAvailableCurves();
+  const analysisData: any[] = [];
+
+  let totalInitialMarketCap = 0;
+  let totalATHMarketCap = 0;
+  let totalCurrentMarketCap = 0;
+
+  for (const c of available) {
+    try {
+      const ath = await calculateATHForCurve(c.curveAddress);
+      
+      analysisData.push({
+        tokenName: ath.tokenName,
+        tokenSymbol: ath.tokenSymbol,
+        curveAddress: c.curveAddress,
+        initialPriceUSD: ath.initialPriceUSD,
+        initialMarketCapUSD: ath.initialPriceUSD * 1000, // تقریب برای تحلیل
+        athPriceUSD: ath.athUSD,
+        athMarketCapUSD: ath.athUSD,
+        currentPriceUSD: ath.currentPriceUSD,
+        currentMarketCapUSD: ath.currentUSD,
+        gainToATH: ath.percentageFromInitial, // از initial تا ATH
+        gainToCurrent: ath.percentageFromInitial, // از initial تا current
+        changeFromATH: ath.percentageFromATH,
+        timeToATHMinutes: ath.timeToATHMinutes,
+        timeToATH: ath.timeToATH
+      });
+
+      totalInitialMarketCap += ath.initialPriceUSD * 1000 || 0;
+      totalATHMarketCap += ath.athUSD || 0;
+      totalCurrentMarketCap += ath.currentUSD || 0;
+    } catch (e: any) {
+      console.warn("⚠️ Skipping curve in analysis:", e?.message || e);
+    }
   }
+
+  // محاسبات آماری
+  const gainsToCurrent = analysisData.map(i => i.gainToCurrent).filter(v => !isNaN(v));
+  const averageGainToCurrent = gainsToCurrent.length ? 
+    gainsToCurrent.reduce((s, v) => s + v, 0) / gainsToCurrent.length : 0;
+  
+  const medianGainToCurrent = gainsToCurrent.length ? 
+    gainsToCurrent.sort((a, b) => a - b)[Math.floor(gainsToCurrent.length / 2)] : 0;
+
+  // توزیع عملکرد
+  const performers = {
+    gainersFromInitial: analysisData.filter(item => item.gainToCurrent > 0).length,
+    losersFromInitial: analysisData.filter(item => item.gainToCurrent < 0).length,
+    neutralFromInitial: analysisData.filter(item => item.gainToCurrent >= -1 && item.gainToCurrent <= 1).length,
+  };
+
+  // دسته‌بندی عملکرد
+  const performanceCategories = {
+    megaGainers: analysisData.filter(item => item.gainToCurrent >= 1000).length,
+    highGainers: analysisData.filter(item => item.gainToCurrent >= 100 && item.gainToCurrent < 1000).length,
+    moderateGainers: analysisData.filter(item => item.gainToCurrent >= 10 && item.gainToCurrent < 100).length,
+    slightGainers: analysisData.filter(item => item.gainToCurrent >= 1 && item.gainToCurrent < 10).length,
+    neutral: analysisData.filter(item => item.gainToCurrent > -1 && item.gainToCurrent < 1).length,
+    slightLosers: analysisData.filter(item => item.gainToCurrent <= -1 && item.gainToCurrent > -10).length,
+    moderateLosers: analysisData.filter(item => item.gainToCurrent <= -10 && item.gainToCurrent > -50).length,
+    bigLosers: analysisData.filter(item => item.gainToCurrent <= -50 && item.gainToCurrent > -90).length,
+    totalLosers: analysisData.filter(item => item.gainToCurrent <= -90).length
+  };
+
+  // آمار زمانی
+  const timesToATH = analysisData.map(item => item.timeToATHMinutes).filter(time => time > 0);
+  const averageTimeToATH = timesToATH.length ? timesToATH.reduce((sum, time) => sum + time, 0) / timesToATH.length : 0;
+  const fastestTimeToATH = timesToATH.length ? Math.min(...timesToATH) : 0;
+  const slowestTimeToATH = timesToATH.length ? Math.max(...timesToATH) : 0;
+
+  // نمونه‌های برجسته
+  const topPerformers = [...analysisData]
+    .sort((a, b) => b.gainToCurrent - a.gainToCurrent)
+    .slice(0, 5);
+  
+  const worstPerformers = [...analysisData]
+    .sort((a, b) => a.gainToCurrent - b.gainToCurrent)
+    .slice(0, 5);
+  
+  const fastestRisers = [...analysisData]
+    .filter(item => item.timeToATHMinutes > 0)
+    .sort((a, b) => a.timeToATHMinutes - b.timeToATHMinutes)
+    .slice(0, 5);
+
+  const totalValueChange = totalCurrentMarketCap - totalInitialMarketCap;
+
+  return {
+    totalTokens: analysisData.length,
+    analysisPeriod: `Analysis of ${analysisData.length} tokens`,
+    averageGainToCurrent,
+    medianGainToCurrent,
+    performers,
+    performanceCategories,
+    averageTimeToATH,
+    fastestTimeToATH,
+    slowestTimeToATH,
+    topPerformers,
+    worstPerformers,
+    fastestRisers,
+    totalInitialMarketCap,
+    totalATHMarketCap,
+    totalCurrentMarketCap,
+    totalValueChange,
+    rawData: analysisData
+  };
+}
+
+/** ===========================
+ * WebSocket server handlers
+ * =========================== */
+wss.on("listening", () => {
+  console.log(`🚀 WebSocket Server running on ws://localhost:${PORT}`);
 });
 
-// مدیریت WebSocket connections
-wss.on('connection', (ws) => {
-  console.log('✅ New React client connected');
+wss.on("connection", (ws) => {
+  console.log("✅ New client connected");
 
-  // ارسال وضعیت اتصال
-  ws.send(JSON.stringify({
-    type: 'CONNECTION_STATUS',
-    databaseConnected: isDatabaseConnected,
-    solPrice: SOL_TO_USD
-  }));
+  // وضعیت اولیه
+  ws.send(
+    JSON.stringify({
+      type: "CONNECTION_STATUS",
+      databaseConnected: isDatabaseConnected,
+      solPrice: SOL_TO_USD,
+    })
+  );
 
-  ws.on('message', async (message) => {
+  ws.on("message", async (message) => {
     try {
       const data = JSON.parse(message.toString());
-      
-      console.log(`📨 Received message type: ${data.type}`);
+      const type = data.type;
 
-      // درخواست curveهای موجود
-      if (data.type === 'GET_AVAILABLE_CURVES') {
-        console.log('📊 Processing available curves request');
-        const availableCurves = await getAvailableCurves();
-        
-        ws.send(JSON.stringify({
-          type: 'AVAILABLE_CURVES',
-          data: availableCurves,
-          count: availableCurves.length
-        }));
-        
-        console.log(`✅ Sent ${availableCurves.length} available curves`);
-      }
+      console.log(`📨 Received message: ${type}`);
 
-      // درخواست داده یک curve خاص
-      if (data.type === 'GET_CURVE_DATA') {
+      if (type === "GET_AVAILABLE_CURVES") {
+        const available = await getAvailableCurves();
+        ws.send(JSON.stringify({ type: "AVAILABLE_CURVES", data: available, count: available.length }));
+        console.log(`✅ Sent AVAILABLE_CURVES (${available.length})`);
+      } else if (type === "GET_CURVE_DATA") {
         const curveAddress = data.curveAddress;
-        
         if (!curveAddress) {
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: 'Curve address is required' 
-          }));
+          ws.send(JSON.stringify({ type: "ERROR", message: "curveAddress is required" }));
           return;
         }
-        
         if (!isDatabaseConnected) {
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: 'Database is not available' 
-          }));
+          ws.send(JSON.stringify({ type: "ERROR", message: "Database not available" }));
           return;
         }
-
-        console.log(`📊 Processing curve data request for: ${curveAddress}`);
-
         try {
           const curveData = await getCompleteCurveData(curveAddress);
-          
-          ws.send(JSON.stringify({
-            type: 'CURVE_DATA',
-            data: curveData
-          }));
-          
-          console.log(`✅ Sent curve data for: ${curveAddress}`);
-        } catch (error: any) {
-          console.error(`❌ Error fetching curve ${curveAddress}:`, error.message);
-          
-          const availableCurves = await getAvailableCurves();
-          
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: error.message,
-            availableCurves: availableCurves
-          }));
+          ws.send(JSON.stringify({ type: "CURVE_DATA", data: curveData }));
+          console.log(`✅ Sent CURVE_DATA for ${curveAddress}`);
+        } catch (e: any) {
+          console.error("❌ Error sending CURVE_DATA:", e?.message || e);
+          const available = await getAvailableCurves();
+          ws.send(JSON.stringify({ type: "ERROR", message: e?.message || "Failed", availableCurves: available }));
         }
-      }
-
-      // درخواست برای همه curves
-      if (data.type === 'GET_ALL_CURVES') {
-        console.log('📊 Processing all curves data request');
-        
+      } else if (type === "GET_ALL_CURVES") {
         if (!isDatabaseConnected) {
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: 'Database is not available' 
-          }));
+          ws.send(JSON.stringify({ type: "ERROR", message: "Database not available" }));
           return;
         }
-
         try {
-          const allCurvesData = await getAllCurvesData();
-          
-          ws.send(JSON.stringify({
-            type: 'ALL_CURVES_DATA',
-            data: allCurvesData,
-            count: allCurvesData.length,
-            timestamp: new Date().toISOString()
-          }));
-
-          console.log(`✅ Sent data for ${allCurvesData.length} curves`);
-        } catch (error: any) {
-          console.error('❌ Error processing all curves:', error);
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: `Failed to process all curves: ${error.message}` 
-          }));
+          const all = await getAllCurvesData();
+          ws.send(JSON.stringify({ type: "ALL_CURVES_DATA", data: all, count: all.length, timestamp: new Date().toISOString() }));
+          console.log(`✅ Sent ALL_CURVES_DATA (${all.length})`);
+        } catch (e: any) {
+          console.error("❌ Error GET_ALL_CURVES:", e);
+          ws.send(JSON.stringify({ type: "ERROR", message: `Failed to get all curves: ${e?.message || e}` }));
         }
-      }
-
-      // درخواست Top ATH
-      if (data.type === 'GET_TOP_ATH') {
-        console.log('🏆 Processing top ATH request');
-        
+      } else if (type === "GET_TOP_ATH") {
         if (!isDatabaseConnected) {
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: 'Database is not available' 
-          }));
+          ws.send(JSON.stringify({ type: "ERROR", message: "Database not available" }));
           return;
         }
-
+        const limit = Number(data.limit || 10);
         try {
-          const limit = data.limit || 10;
-          const topATHData = await getTopATH(limit);
-          
-          ws.send(JSON.stringify({
-            type: 'TOP_ATH_DATA',
-            data: topATHData,
-            count: topATHData.length,
-            timestamp: new Date().toISOString()
-          }));
-
-          console.log(`✅ Sent top ${topATHData.length} ATH curves`);
-        } catch (error: any) {
-          console.error('❌ Error processing top ATH:', error);
-          ws.send(JSON.stringify({ 
-            type: 'ERROR', 
-            message: `Failed to process top ATH: ${error.message}` 
-          }));
+          const top = await getTopATH(limit);
+          ws.send(JSON.stringify({ type: "TOP_ATH_DATA", data: top, count: top.length, timestamp: new Date().toISOString() }));
+          console.log(`✅ Sent TOP_ATH_DATA (${top.length})`);
+        } catch (e: any) {
+          console.error("❌ Error GET_TOP_ATH:", e);
+          ws.send(JSON.stringify({ type: "ERROR", message: `Failed to get top ATH: ${e?.message || e}` }));
         }
+      } else if (type === "GET_COMPREHENSIVE_ANALYSIS") {
+        if (!isDatabaseConnected) {
+          ws.send(JSON.stringify({ type: "ERROR", message: "Database not available" }));
+          return;
+        }
+        try {
+          const analysis = await generateComprehensiveAnalysis();
+          ws.send(JSON.stringify({ type: "COMPREHENSIVE_ANALYSIS", data: analysis, timestamp: new Date().toISOString() }));
+          console.log("✅ Sent COMPREHENSIVE_ANALYSIS");
+        } catch (e: any) {
+          console.error("❌ Error GET_COMPREHENSIVE_ANALYSIS:", e);
+          ws.send(JSON.stringify({ type: "ERROR", message: `Failed to generate analysis: ${e?.message || e}` }));
+        }
+      } else {
+        ws.send(JSON.stringify({ type: "ERROR", message: "Unknown message type" }));
       }
-
-    } catch (error: any) {
-      console.error('❌ WebSocket error:', error);
-      ws.send(JSON.stringify({ 
-        type: 'ERROR', 
-        message: error.message || 'Failed to process request' 
-      }));
+    } catch (err: any) {
+      console.error("❌ WebSocket message handler error:", err);
+      ws.send(JSON.stringify({ type: "ERROR", message: err?.message || "Invalid message" }));
     }
   });
 
-  ws.on('close', () => {
-    console.log('❌ React client disconnected');
+  ws.on("close", () => {
+    console.log("❌ Client disconnected");
   });
 
-  ws.on('error', (error) => {
-    console.error('❌ WebSocket client error:', error);
+  ws.on("error", (err) => {
+    console.error("❌ WebSocket client error:", err);
   });
 });
 
-// آپدیت دوره‌ای قیمت SOL هر 5 دقیقه
-setInterval(updateSolPrice, 300000);
+/** ===========================
+ * Startup tasks
+ * =========================== */
+initializeDatabase()
+  .then((ok) => {
+    if (ok) {
+      console.log("✅ Server ready");
+      updateSolPrice(); // initial fetch
+      // update periodically every 5 minutes
+      setInterval(updateSolPrice, 5 * 60 * 1000);
+    } else {
+      console.warn("❌ Server started but DB unavailable");
+    }
+  })
+  .catch((e) => {
+    console.error("❌ DB init error:", e);
+  });
 
-// مدیریت graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('🛑 Shutting down WebSocket server...');
-  await prisma.$disconnect();
+/** Graceful shutdown */
+process.on("SIGINT", async () => {
+  console.log("🛑 Shutting down WebSocket server...");
+  try {
+    await prisma.$disconnect();
+  } catch (e) {}
   wss.close(() => {
-    console.log('✅ WebSocket server closed');
+    console.log("✅ WebSocket server closed");
     process.exit(0);
   });
 });
 
-// هندل خطاهای unhandled
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
+process.on("uncaughtException", (error) => {
+  console.error("❌ Uncaught Exception:", error);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 export { wss };
