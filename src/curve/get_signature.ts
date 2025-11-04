@@ -6,7 +6,7 @@ import { BondingCurveStateProps } from "./get_bonding_curve_status";
 
 dotenv.config();
 
-const RPC_ENDPOINT = process.env.SOLANA_NODE_RPC_ENDPOINT || "https://api.mainnet-beta.solana.com";
+const RPC_ENDPOINT = process.env.SOLANA_NODE_RPC_ENDPOINT_SIG || "https://api.mainnet-beta.solana.com";
 const prisma = new PrismaClient();
 const TOKEN_DECIMALS = 9;
 
@@ -154,13 +154,28 @@ export async function getAndSaveSignaturesForCurve(
     // نمایش اطلاعات برای دیباگ
     displayBondingCurveState(currentCurveState, tokenPriceSol);
 
-    const signatures = await connection.getSignaturesForAddress(curvePubKey, { limit: 80 });
+    // گرفتن signatureها - می‌توانید limit را افزایش دهید
+    const signatures = await connection.getSignaturesForAddress(curvePubKey, { 
+      limit: 100 // افزایش limit برای گرفتن تراکنش‌های بیشتر
+    });
+    
     console.log(`📝 Found ${signatures.length} signatures for curve ${curveAddress}`);
+
+    // بررسی signatureهای قبلاً ذخیره شده
+    const existingSignatures = await prisma.bondingCurveSignature.findMany({
+      where: { curveAddress },
+      select: { signature: true }
+    });
+    
+    const existingSigSet = new Set(existingSignatures.map(s => s.signature));
+    const newSignatures = signatures.filter(sig => !existingSigSet.has(sig.signature));
+    
+    console.log(`🆕 New signatures to process: ${newSignatures.length}`);
 
     let processedCount = 0;
     let skippedCount = 0;
 
-    for (const sig of signatures) {
+    for (const sig of newSignatures) {
       try {
         if (sig.err) {
           console.log(`⚠️ Skipping errored tx: ${sig.signature}`);
@@ -178,10 +193,10 @@ export async function getAndSaveSignaturesForCurve(
           continue;
         }
 
+        // پردازش تراکنش (کد قبلی شما)
         const preTokenBalances = tx.meta?.preTokenBalances ?? [];
         const postTokenBalances = tx.meta?.postTokenBalances ?? [];
 
-        // فیلتر فقط آدرس‌های مرتبط با curveAddress
         const pre = preTokenBalances.find(b => b.owner === curveAddress);
         const post = postTokenBalances.find(b => b.owner === curveAddress);
         
@@ -192,17 +207,14 @@ export async function getAndSaveSignaturesForCurve(
 
         const preAmount = BigInt(pre.uiTokenAmount.amount);
         const postAmount = BigInt(post.uiTokenAmount.amount);
-
-        // اختلاف مقدار توکن
         const diff = postAmount - preAmount;
 
-        // نادیده گرفتن تراکنش‌های بی‌معنی مثل مقدار 1
         if (diff === 1n || diff === 0n) {
           skippedCount++;
           continue;
         }
 
-        // ذخیره در پایگاه داده - استفاده از مدل اصلی (نه Test)
+        // ذخیره در پایگاه داده
         await prisma.bondingCurveSignature.upsert({
           where: { signature: sig.signature },
           update: {
@@ -238,7 +250,7 @@ export async function getAndSaveSignaturesForCurve(
           },
         });
 
-        console.log(`💾 Saved Token Change: ${sig.signature} → Δ ${diff}`);
+        console.log(`💾 Saved NEW Signature: ${sig.signature} → Δ ${diff}`);
         processedCount++;
 
       } catch (txErr) {
@@ -248,21 +260,10 @@ export async function getAndSaveSignaturesForCurve(
     }
 
     console.log(`✅ Signature processing completed for curve ${curveAddress}`);
-    console.log(`📊 Results: ${processedCount} processed, ${skippedCount} skipped, ${signatures.length} total`);
+    console.log(`📊 Results: ${processedCount} new processed, ${skippedCount} skipped, ${signatures.length} total found`);
 
   } catch (error: any) {
     console.error(`❌ Error fetching/saving signatures: ${error.message}`);
-    
-    // خطاهای خاص را بهتر هندل کنید
-    if (error.message.includes("Invalid public key")) {
-      console.log("❌ Invalid bonding curve address format");
-    } else if (error.message.includes("Account does not exist") || error.message.includes("No account info")) {
-      console.log("❌ Bonding curve account not found - may be invalid address");
-    } else if (error.message.includes("Invalid curve state discriminator")) {
-      console.log("❌ This account is not a valid Pump.fun bonding curve");
-    }
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
